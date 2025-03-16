@@ -1,0 +1,40 @@
+{
+    "status": {
+        "status": [ // will loop over these
+            "A beautiful stallion",
+            "Command me, I order it",
+            "Let's talk about horses"
+        ],
+        "cooldown": 60
+    },
+    "daily_counter": {  // user pung by daily counter
+        "ping_user_id": 0
+    },
+    "linky": {  // user with stored and retrieved messages
+        "user_id": 0
+    },
+    "log_manager": {
+        "pastebin_token": "token"
+    },
+    "color_role_manager": {
+        "channel_id": 4, // channel, message, emoji to listen for
+        "color_role_messages": {
+            "0": {
+                // emoji to role id or name
+                "1": "ghostyTrickster",
+                "2": 533523553,
+
+            },
+            "1": {
+                "3": "scratch",
+                "4": "vantas",
+            }
+        }
+    },
+    "events": {
+        "autoreact_channel_ids": [1] // autoreacts with a heart
+    },
+    "misc": {
+        "latex_channel_ids": [1, 2, 3] // latex can only be used in these channels
+    }
+}

@@ -1,0 +1,9 @@
+{
+    "token": "...", // Discord bot token
+    "default_prefix": "D--> ", // Debug prefix used for admin commands (only in special chanenls)
+    "default_guild_id": 0, // Default guild for tasks that require a guild
+    "usrlog_channel_id": 1, // Would send user join/leave logs, currently allows debug commands in this channel
+    "msglog_channel_id": 2, // Would send message logs, currently sends the bot logs
+    "modlog_channel_id": 3, // Sends mod action logs
+    "database_path": "data/bot_data.db"
+}
