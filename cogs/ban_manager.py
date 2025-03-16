@@ -150,6 +150,33 @@ class BanManager(commands.Cog, name="ban_manager"):
             response_bank.channel_ban_confirm.format(member=member.mention, until=relative_unban, reason=reason)
         )
 
+    @channel.command(name="memeban", description="Simulate a channel ban.")
+    @app_commands.default_permissions(manage_roles=True)
+    async def fakeban(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        length: str,
+        reason: str = "None specified.",
+    ) -> None:
+        """
+        Simulates a channel ban by displaying the confirmation message without applying any roles.
+        """
+        try:
+            duration = self._parse_length(length)
+        except ValueError:
+            duration = None
+
+        # Prepare the duration string for display
+        lenstr = "Until further notice." if duration is None else f"{duration} hour(s)."
+
+        # Instead of actually banning, simply send the confirmation message.
+        await interaction.response.send_message(
+            response_bank.channel_ban_confirm.format(
+                member=member.mention, until=lenstr, reason=reason
+            )
+        )
+
     @channel.command(name="unban", description="Remove a channel ban role from a user.")
     async def unban(self, interaction: discord.Interaction, member: discord.Member, reason: str = "") -> None:
         """Removes a channel ban role from a user."""

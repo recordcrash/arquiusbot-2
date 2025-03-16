@@ -79,22 +79,23 @@ The bot will sync slash commands to your server on startup.
 
 ## Command Overview
 
-| Command                | Description                                     |
-|--------------------------|-------------------------------------------------|
-| `/banlist`               | Show a list of active channel bans.             |
-| `/channel ban`           | Temporarily ban a user in the channel.          |
-| `/channel unban`         | Remove a channel ban role from a user.          |
-| `/daily`                 | Manually post the daily stats report.           |
-| `/flex`                  | Request a STRONG flex from the bot.             |
-| `/generate <option>`     | Generate fun random names (tavern, troll, etc). |
-| `/ignoreplebs`           | Toggle command execution restrictions.          |
-| `/latex`                 | Render a LaTeX equation.                        |
-| `/linky`                 | Trigger Linkybot message.                       |
-| `/modhelp`               | Show moderation commands.                       |
-| `/modperms`              | Show your guild permissions.                    |
-| `/ping`                  | Ping the bot.                                   |
-| `/raidban`               | Ban multiple users at once.                     |
-| `/reportlog`             | Manually post the bot's error logs.             |
+| Command              | Description                                     |
+|----------------------|-------------------------------------------------|
+| `/banlist`           | Show a list of active channel bans.             |
+| `/channel ban`       | Temporarily ban a user in the channel.          |
+| `/channel memeban`   | Fake ban a user in the channel.                 |
+| `/channel unban`     | Remove a channel ban role from a user.          |
+| `/daily`             | Manually post the daily stats report.           |
+| `/flex`              | Request a STRONG flex from the bot.             |
+| `/generate <option>` | Generate fun random names (tavern, troll, etc). |
+| `/ignoreplebs`       | Toggle command execution restrictions.          |
+| `/latex`             | Render a LaTeX equation.                        |
+| `/linky`             | Trigger Linkybot message.                       |
+| `/modhelp`           | Show moderation commands.                       |
+| `/modperms`          | Show your guild permissions.                    |
+| `/ping`              | Ping the bot.                                   |
+| `/raidban`           | Ban multiple users at once.                     |
+| `/reportlog`         | Manually post the bot's error logs.             |
 
 There are other owner-only commands that use the prefix `D-->`. 
 These are mostly used for reloading cogs and other debug actions, and irrelevant to end users.
