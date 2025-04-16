@@ -9,7 +9,10 @@ from discord.ext import commands, tasks
 from classes.discordbot import DiscordBot
 from classes.response_bank import response_bank
 
-_unit_dict = {'h': 1, 'd': 24, 'w': 168, 'm': 732, 'y': 8766}
+# Multipliers to convert durations to hours.
+# 'm' is interpreted as month (732 hours), while 'min' represents one minute (1/60 hours).
+_unit_dict = {'h': 1, 'd': 24, 'w': 168, 'm': 732, 'y': 8766, 'min': 1 / 60}
+
 
 class BanManager(commands.Cog, name="ban_manager"):
     """Manages channel bans using roles, with scheduled unbans stored in SQLite."""
@@ -22,13 +25,18 @@ class BanManager(commands.Cog, name="ban_manager"):
     def cog_unload(self) -> None:
         self.manage_mutelist.cancel()
 
-    def _parse_length(self, length: str) -> Optional[int]:
-        """Parses duration strings (e.g., '3h', '1d') into hours."""
+    def _parse_length(self, length: str) -> Optional[float]:
+        """Parses duration strings (e.g., '3h', '1d', '1min') into hours.
+
+        Returns None for permanent bans.
+        """
         length = length.strip()
         if length.lower() == "perma":
             return None
-        if match := re.match(r"(\d+)([hdwmy])$", length):
-            return int(match[1]) * _unit_dict[match[2]]
+        if match := re.match(r"(\d+)(min|[hdwmy])$", length, re.IGNORECASE):
+            number = int(match[1])
+            unit = match[2].lower()
+            return number * _unit_dict[unit]
         raise ValueError(response_bank.channel_ban_duration_error.format(length=length))
 
     async def _log_mod(self, embed: discord.Embed) -> None:
@@ -100,7 +108,8 @@ class BanManager(commands.Cog, name="ban_manager"):
         try:
             duration = self._parse_length(length)
         except ValueError:
-            await interaction.response.send_message(response_bank.channel_ban_duration_error.format(length=length), ephemeral=True)
+            await interaction.response.send_message(response_bank.channel_ban_duration_error.format(length=length),
+                                                    ephemeral=True)
             return
 
         if member.id == self.bot.user.id:
@@ -125,7 +134,8 @@ class BanManager(commands.Cog, name="ban_manager"):
         try:
             await member.add_roles(channel_ban_role, reason=f'Channel ban: {reason}')
         except discord.Forbidden:
-            await interaction.response.send_message(f"Error: Could not apply ban role to {member.mention}.", ephemeral=True)
+            await interaction.response.send_message(f"Error: Could not apply ban role to {member.mention}.",
+                                                    ephemeral=True)
             return
 
         unban_time = datetime.now(timezone.utc) + timedelta(hours=duration) if duration else None
@@ -153,11 +163,11 @@ class BanManager(commands.Cog, name="ban_manager"):
     @channel.command(name="memeban", description="Simulate a channel ban.")
     @app_commands.default_permissions(manage_roles=True)
     async def fakeban(
-        self,
-        interaction: discord.Interaction,
-        member: discord.Member,
-        length: str,
-        reason: str = "None specified.",
+            self,
+            interaction: discord.Interaction,
+            member: discord.Member,
+            length: str,
+            reason: str = "None specified.",
     ) -> None:
         """
         Simulates a channel ban by displaying the confirmation message without applying any roles.
