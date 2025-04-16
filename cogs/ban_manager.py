@@ -47,9 +47,9 @@ class BanManager(commands.Cog, name="ban_manager"):
             if channel:
                 await channel.send(embed=embed)
 
-    @tasks.loop(minutes=30)
+    @tasks.loop(minutes=10)
     async def manage_mutelist(self) -> None:
-        """Handles scheduled unbans from the database every 30 minutes."""
+        """Handles scheduled unbans from the database every 10 minutes."""
         now = datetime.now(timezone.utc)
         due_bans = self.bot.db.get_due_scheduled_bans(now)
 
@@ -105,15 +105,16 @@ class BanManager(commands.Cog, name="ban_manager"):
             reason: str = "None specified."
     ) -> None:
         """Applies a channel ban role to a user for a specified duration."""
+        # Defer the interaction immediately.
+        await interaction.response.defer()
         try:
             duration = self._parse_length(length)
         except ValueError:
-            await interaction.response.send_message(response_bank.channel_ban_duration_error.format(length=length),
-                                                    ephemeral=True)
+            await interaction.followup.send(response_bank.channel_ban_duration_error.format(length=length), ephemeral=True)
             return
 
         if member.id == self.bot.user.id:
-            await interaction.response.send_message('<:professionalism:1350770886243909702>', ephemeral=True)
+            await interaction.followup.send('<:professionalism:1350770886243909702>', ephemeral=True)
             return
 
         # Determine the channel to use for permission overwrites.
@@ -128,14 +129,13 @@ class BanManager(commands.Cog, name="ban_manager"):
             None
         )
         if not channel_ban_role:
-            await interaction.response.send_message(response_bank.channel_ban_role_error, ephemeral=True)
+            await interaction.followup.send(response_bank.channel_ban_role_error, ephemeral=True)
             return
 
         try:
             await member.add_roles(channel_ban_role, reason=f'Channel ban: {reason}')
         except discord.Forbidden:
-            await interaction.response.send_message(f"Error: Could not apply ban role to {member.mention}.",
-                                                    ephemeral=True)
+            await interaction.followup.send(f"Error: Could not apply ban role to {member.mention}.", ephemeral=True)
             return
 
         unban_time = datetime.now(timezone.utc) + timedelta(hours=duration) if duration else None
@@ -156,7 +156,7 @@ class BanManager(commands.Cog, name="ban_manager"):
         embed.set_author(name=f'{interaction.user} issued channel ban:', icon_url=interaction.user.display_avatar.url)
 
         await self._log_mod(embed)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             response_bank.channel_ban_confirm.format(member=member.mention, until=relative_unban, reason=reason)
         )
 
@@ -172,6 +172,7 @@ class BanManager(commands.Cog, name="ban_manager"):
         """
         Simulates a channel ban by displaying the confirmation message without applying any roles.
         """
+        await interaction.response.defer(ephemeral=True)
         try:
             duration = self._parse_length(length)
         except ValueError:
@@ -181,17 +182,19 @@ class BanManager(commands.Cog, name="ban_manager"):
         lenstr = "Until further notice." if duration is None else f"{duration} hour(s)."
 
         # Instead of actually banning, simply send the confirmation message.
-        await interaction.response.send_message(
+        await interaction.followup.send(
             response_bank.channel_ban_confirm.format(
                 member=member.mention, until=lenstr, reason=reason
-            )
+            ),
+            ephemeral=True
         )
 
     @channel.command(name="unban", description="Remove a channel ban role from a user.")
     async def unban(self, interaction: discord.Interaction, member: discord.Member, reason: str = "") -> None:
         """Removes a channel ban role from a user."""
+        await interaction.response.defer()
         if member.id == self.bot.user.id:
-            await interaction.response.send_message('<:professionalism:1350770886243909702>', ephemeral=True)
+            await interaction.followup.send('<:professionalism:1350770886243909702>', ephemeral=True)
             return
 
         # Determine the channel to use for permission overwrites.
@@ -205,13 +208,13 @@ class BanManager(commands.Cog, name="ban_manager"):
             None
         )
         if not channel_ban_role:
-            await interaction.response.send_message(response_bank.channel_unban_role_error, ephemeral=True)
+            await interaction.followup.send(response_bank.channel_unban_role_error, ephemeral=True)
             return
 
         try:
             await member.remove_roles(channel_ban_role, reason=f'Channel unban: {reason}')
         except discord.Forbidden:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"Error: Could not remove ban role from {member.mention}.", ephemeral=True
             )
             return
@@ -228,8 +231,8 @@ class BanManager(commands.Cog, name="ban_manager"):
         embed.set_author(name=f'{interaction.user} undid channel ban:', icon_url=interaction.user.display_avatar.url)
 
         await self._log_mod(embed)
-        await interaction.response.send_message(
-            f"{member.mention} has been unbanned from the channel for reason {reason}."
+        await interaction.followup.send(
+            f"{member.mention} has been unbanned from the channel for reason {reason}.", ephemeral=True
         )
 
     @app_commands.guild_only
@@ -239,13 +242,12 @@ class BanManager(commands.Cog, name="ban_manager"):
     )
     async def banlist(self, interaction: discord.Interaction) -> None:
         """Shows a list of active scheduled bans."""
+        await interaction.response.defer(ephemeral=True)
         now = datetime.now(timezone.utc)
         active_bans = self.bot.db.get_active_scheduled_bans(now)
 
         if not active_bans:
-            await interaction.response.send_message(
-                response_bank.no_active_channel_bans, ephemeral=True
-            )
+            await interaction.followup.send(response_bank.no_active_channel_bans, ephemeral=True)
             return
 
         # Safely unpack ban data (it can easily fail due to too-future dates)
@@ -281,7 +283,7 @@ class BanManager(commands.Cog, name="ban_manager"):
             color=discord.Color.blue(),
             timestamp=now,
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 async def setup(bot: DiscordBot) -> None:
