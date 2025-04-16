@@ -81,7 +81,7 @@ class Misc(commands.Cog, name="misc"):
             await interaction.response.send_message("D--> Use your words, straight from the horse's mouth.", ephemeral=True)
             return
         groups = match.groups()
-        ndice, nfaces, sign, mod = (group or '0' for group in groups)
+        ndice, nfaces, sign, mod = [group or '0' for group in groups]
         ndice, nfaces = int(ndice), int(nfaces)
         if ndice <= 0 or nfaces <= 0:
             await interaction.response.send_message("D--> That doesn't math very well. I STRONGLY suggest you try again.", ephemeral=True)
