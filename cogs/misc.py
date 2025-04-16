@@ -78,26 +78,32 @@ class Misc(commands.Cog, name="misc"):
         """Rolls dice in NdF+M format (e.g., 2d6+1)."""
         match = re.match(r'(\d+)\s*d\s*(\d+)\s*(?:([-+])\s*(\d+))?$', args.strip())
         if not match:
-            await interaction.response.send_message("D--> Use your words, straight from the horse's mouth.", ephemeral=True)
+            await interaction.response.send_message("D--> Use your words, straight from the horse's mouth.",
+                                                    ephemeral=True)
             return
-        groups = match.groups()
-        ndice, nfaces, sign, mod = [group or '0' for group in groups]
-        ndice, nfaces = int(ndice), int(nfaces)
+
+        ndice_str, nfaces_str, sign, mod = match.groups()
+        ndice = int(ndice_str)
+        nfaces = int(nfaces_str)
+        # Default missing sign and mod to empty string.
+        sign = sign or ''
+        mod = mod or ''
+
         if ndice <= 0 or nfaces <= 0:
-            await interaction.response.send_message("D--> That doesn't math very well. I STRONGLY suggest you try again.", ephemeral=True)
+            await interaction.response.send_message(
+                "D--> That doesn't math very well. I STRONGLY suggest you try again.", ephemeral=True)
             return
+
         modnum = int(sign + mod) if sign else 0
+
         rolls = [random.randint(1, nfaces) for _ in range(ndice)]
         result = sum(rolls) + modnum
-
-        msg = f"{interaction.user.mention} **rolled {ndice}d{nfaces}{sign or ''}{mod or ''}:** `({' + '.join(map(str, rolls))})` = **{result}**"
-
+        msg = f"{interaction.user.mention} **rolled {ndice}d{nfaces}{sign}{mod}:** `({' + '.join(map(str, rolls))})` = **{result}**"
         embed = discord.Embed(
             color=discord.Color.red(),
             description=f'`Min: {min(rolls)}; Max: {max(rolls)}; Mean: {sum(rolls) / ndice:0.2f}; Mode: {max(set(rolls), key=rolls.count)}`'
         )
         embed.set_author(name='Roll Statistics:', icon_url=url_bank.roll_icon)
-
         await interaction.response.send_message(msg, embed=embed)
 
     @app_commands.guild_only
