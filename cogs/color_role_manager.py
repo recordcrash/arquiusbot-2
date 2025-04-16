@@ -22,10 +22,28 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
         self.channel_id = self.subconfig_data.get("channel_id")
         self.color_role_messages = self.subconfig_data.get("color_role_messages", {})
         self._ignore_removals = set()  # Track removals triggered by our own action.
+        # Cache for application (bot) emojis.
+        self.application_emojis: dict[int, discord.Emoji] = {}
         self.bot.log(
             message=f"D--> Loaded {len(self.color_role_messages)} color role messages",
             name="ColorRoleManager.__init__",
         )
+
+    async def cache_application_emojis(self) -> None:
+        """Fetches all application emojis and caches them for quick lookup."""
+        try:
+            emojis = await self.bot.fetch_application_emojis()
+            self.application_emojis = {emoji.id: emoji for emoji in emojis}
+            self.bot.log(
+                message=f"D--> Cached {len(self.application_emojis)} application emojis",
+                name="ColorRoleManager.cache_application_emojis",
+            )
+        except Exception as e:
+            self.bot.log(
+                message=f"D--> Failed to fetch application emojis: {e}",
+                name="ColorRoleManager.cache_application_emojis",
+            )
+            self.application_emojis = {}
 
     async def _ensure_reactions(self) -> None:
         """Ensure that the correct reactions are present on the configured messages.
@@ -55,11 +73,14 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
             # Build a set of expected emoji strings.
             expected_emojis = set()
             for emoji_key in reactions.keys():
-                emoji = (
-                    self.bot.get_emoji(int(emoji_key))
-                    if emoji_key.isdigit()
-                    else emoji_key
-                )
+                if emoji_key.isdigit():
+                    # Attempt to resolve the emoji from the application cache.
+                    emoji = self.application_emojis.get(int(emoji_key))
+                    if emoji is None:
+                        # Fallback to guild emoji, if available.
+                        emoji = self.bot.get_emoji(int(emoji_key))
+                else:
+                    emoji = emoji_key
                 expected_emojis.add(str(emoji))
 
             # Remove any reactions not in the expected set.
@@ -83,11 +104,12 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
 
             # Add any missing reactions.
             for emoji_key in reactions.keys():
-                emoji = (
-                    self.bot.get_emoji(int(emoji_key))
-                    if emoji_key.isdigit()
-                    else emoji_key
-                )
+                if emoji_key.isdigit():
+                    emoji = self.application_emojis.get(int(emoji_key))
+                    if emoji is None:
+                        emoji = self.bot.get_emoji(int(emoji_key))
+                else:
+                    emoji = emoji_key
                 # Check if emoji resolved to None.
                 if emoji is None:
                     self.bot.log(
@@ -112,11 +134,12 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
 
             # Process any pending reactions for valid emojis.
             for emoji_key in reactions.keys():
-                emoji = (
-                    self.bot.get_emoji(int(emoji_key))
-                    if emoji_key.isdigit()
-                    else emoji_key
-                )
+                if emoji_key.isdigit():
+                    emoji = self.application_emojis.get(int(emoji_key))
+                    if emoji is None:
+                        emoji = self.bot.get_emoji(int(emoji_key))
+                else:
+                    emoji = emoji_key
                 # Locate the corresponding reaction on the message.
                 target_reaction = next(
                     (r for r in msg.reactions if str(r.emoji) == str(emoji)), None
@@ -212,6 +235,7 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
+        await self.cache_application_emojis()
         self.bot.log(
             message="ColorRoleManager on_ready: ensuring reactions",
             name="ColorRoleManager.on_ready"
