@@ -1,5 +1,7 @@
 # ARQuiusbot
 
+![Deploy Status](https://github.com/recordcrash/arquiusbot-2/actions/workflows/main.yml/badge.svg?branch=master)
+
 **ARQuiusbot** is a modern multi-feature Discord bot. It handles moderation, role management, logging, random text generation, and more. The code is split across multiple cogs.
 
 It's designed for the [Homestuck Discord](https://discord.gg/homestuck), but can be adapted to other private servers. Each instance only supports one server at a time.
