@@ -5,5 +5,8 @@
     "usrlog_channel_id": 1, // Would send user join/leave logs, currently allows debug commands in this channel
     "msglog_channel_id": 2, // Would send message logs, currently sends the bot logs
     "modlog_channel_id": 3, // Sends mod action logs
-    "database_path": "data/bot_data.db"
+    "censored_words": ["pillweef"], // Censors words (useful for user/AI data)
+    "censor_character": "*", // Letters in those words will be replaced with this character
+    "database_path": "data/bot_data.db",
+    "enabled_cogs": ["admin", "errors"] // Empty array loads all cogs. Add cog names to enable only specific ones.
 }

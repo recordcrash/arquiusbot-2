@@ -33,10 +33,32 @@ class Bot(DiscordBot):
         # Initialize database singleton and attach it to the bot
         self.db = Database()
 
-        # Load cogs.
-        cogs = [f"cogs.{filename[:-3]}" for filename in listdir(cogs_directory) if filename.endswith(".py")]
-        await cogs_manager(self, "load", cogs)
-        self.log(message=f"Cogs loaded ({len(cogs)}): {', '.join(cogs)}", name="discord.setup_hook")
+        # Get all available cogs
+        available_cogs = [filename[:-3] for filename in listdir(cogs_directory) if filename.endswith(".py")]
+
+        # Check if specific cogs are enabled in config
+        enabled_cogs = self.config["bot"].get("enabled_cogs", [])
+
+        if enabled_cogs:
+            # Filter to only include cogs that exist
+            valid_cogs = [cog for cog in enabled_cogs if cog in available_cogs]
+
+            if len(valid_cogs) < len(enabled_cogs):
+                missing_cogs = set(enabled_cogs) - set(valid_cogs)
+                self.log(message=f"Warning: Some enabled cogs were not found: {', '.join(missing_cogs)}",
+                         name="discord.setup_hook")
+
+            # Convert to full module paths
+            cogs_to_load = [f"cogs.{cog}" for cog in valid_cogs]
+            self.log(message=f"Loading specified cogs: {', '.join(valid_cogs)}", name="discord.setup_hook")
+        else:
+            # Load all cogs if none specified
+            cogs_to_load = [f"cogs.{cog}" for cog in available_cogs]
+            self.log(message=f"No specific cogs enabled in config, loading all cogs", name="discord.setup_hook")
+
+        # Load the selected cogs
+        await cogs_manager(self, "load", cogs_to_load)
+        self.log(message=f"Cogs loaded ({len(cogs_to_load)}): {', '.join(cogs_to_load)}", name="discord.setup_hook")
 
         # Start the startup task.
         self.loop.create_task(self.startup())

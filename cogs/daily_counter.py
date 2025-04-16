@@ -96,7 +96,8 @@ class DailyCounter(commands.Cog, name="daily_counter"):
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
-        self.post_dailies.start()
+        if not self.post_dailies.is_running():
+            self.post_dailies.start()
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
@@ -155,8 +156,12 @@ class DailyCounter(commands.Cog, name="daily_counter"):
             name="DailyCounter.post_dailies_start_delay",
         )
         now = datetime.now(timezone.utc)
-        next_midnight = datetime.combine(now.date() + timedelta(1), datetime.min.time())
-        await aio.sleep((next_midnight - now).seconds)
+        next_midnight = datetime.combine(
+            now.date() + timedelta(1),
+            datetime.min.time(),
+            tzinfo=timezone.utc
+        )
+        await aio.sleep((next_midnight - now).total_seconds())
 
     @app_commands.guild_only
     @app_commands.command(name="daily", description="Manually post the daily stats report.")
