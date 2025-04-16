@@ -66,5 +66,8 @@ huskies = {
         'https://cdn.discordapp.com/attachments/663453347763716110/841760984724537414/Husko.png',
         'https://cdn.discordapp.com/attachments/663453347763716110/842369221669421106/Ballonsky.png',
         'https://cdn.discordapp.com/attachments/663453347763716110/842369264341876776/twosky.png',
+        'https://cdn.discordapp.com/attachments/548262362617085962/1362139973905678586/huskycake.gif',
+        'https://cdn.discordapp.com/attachments/548262362617085962/1362139974429970533/huskysquish.gif',
+        'https://cdn.discordapp.com/attachments/548262362617085962/1362139974899601528/huskyballoon.gif'
         ),
     }
