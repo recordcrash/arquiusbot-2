@@ -11,14 +11,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-
       - uses: astral-sh/setup-uv@v5
         with:
           version: "0.6.14"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
-
+      - uses: actions/checkout@v4
       - uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SERVER_IP }}
@@ -42,4 +40,4 @@ jobs:
 
             uv sync --all-extras
 
-            sudo systemctl restart arquiusbot.service
+            systemctl restart arquiusbot.service
