@@ -1,9 +1,12 @@
+import re
+
 import discord
 from discord.ext import commands
 
 from classes.discordbot import DiscordBot
 
-IMAGE_EXTS = ('png', 'gif', 'jpg', 'jpeg', 'jpe', 'jfif')
+# Matches an image file extension optionally followed by query parameters.
+IMAGE_PATTERN = re.compile(r'\.(png|gif|jpe?g|jfif|heif|svg|webp|avif)(?:\?.*)?$', re.IGNORECASE)
 
 class EventListeners(commands.Cog, name="events"):
     """
@@ -74,7 +77,7 @@ class EventListeners(commands.Cog, name="events"):
     async def on_message(self, msg: discord.Message) -> None:
         """Handles auto-reactions for images in certain channels."""
         is_autoreact_channel = msg.channel.id in self.autoreact_channel_ids
-        has_image_attachment = any(att.url.lower().endswith(IMAGE_EXTS) for att in msg.attachments)
+        has_image_attachment = any(IMAGE_PATTERN.search(att.url) for att in msg.attachments)
         if is_autoreact_channel and has_image_attachment:
             await msg.add_reaction('❤️')
 
