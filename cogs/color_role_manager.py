@@ -88,6 +88,14 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
                     if emoji_key.isdigit()
                     else emoji_key
                 )
+                # Check if emoji resolved to None.
+                if emoji is None:
+                    self.bot.log(
+                        message=f"D--> Emoji for key {emoji_key} resolved to None. Skipping reaction addition for message {msg_id}",
+                        name="ColorRoleManager._ensure_reactions"
+                    )
+                    continue
+
                 expected = str(emoji)
                 if expected not in existing_reactions:
                     try:
