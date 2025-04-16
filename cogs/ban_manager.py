@@ -99,10 +99,12 @@ class BanManager(commands.Cog, name="ban_manager"):
     @channel.command(name="ban", description="Temporarily ban a user in the channel.")
     @app_commands.default_permissions(manage_roles=True)
     async def ban(
-            self, interaction: discord.Interaction,
+            self,
+            interaction: discord.Interaction,
             member: discord.Member,
             length: str,
-            reason: str = "None specified."
+            reason: str = "None specified.",
+            memeban: bool = False,
     ) -> None:
         """Applies a channel ban role to a user for a specified duration."""
         # Defer the interaction immediately.
@@ -110,7 +112,19 @@ class BanManager(commands.Cog, name="ban_manager"):
         try:
             duration = self._parse_length(length)
         except ValueError:
-            await interaction.followup.send(response_bank.channel_ban_duration_error.format(length=length), ephemeral=True)
+            if memeban:
+                duration = None
+            else:
+                await interaction.followup.send(response_bank.channel_ban_duration_error.format(length=length), ephemeral=True)
+                return
+
+        if memeban:
+            lenstr = "Until further notice." if duration is None else f"{duration} hour(s)."
+            await interaction.followup.send(
+                response_bank.channel_ban_confirm.format(
+                    member=member.mention, until=lenstr, reason=reason
+                ),
+            )
             return
 
         if member.id == self.bot.user.id:
@@ -158,35 +172,6 @@ class BanManager(commands.Cog, name="ban_manager"):
         await self._log_mod(embed)
         await interaction.followup.send(
             response_bank.channel_ban_confirm.format(member=member.mention, until=relative_unban, reason=reason)
-        )
-
-    @channel.command(name="memeban", description="Simulate a channel ban.")
-    @app_commands.default_permissions(manage_roles=True)
-    async def fakeban(
-            self,
-            interaction: discord.Interaction,
-            member: discord.Member,
-            length: str,
-            reason: str = "None specified.",
-    ) -> None:
-        """
-        Simulates a channel ban by displaying the confirmation message without applying any roles.
-        """
-        await interaction.response.defer(ephemeral=True)
-        try:
-            duration = self._parse_length(length)
-        except ValueError:
-            duration = None
-
-        # Prepare the duration string for display
-        lenstr = "Until further notice." if duration is None else f"{duration} hour(s)."
-
-        # Instead of actually banning, simply send the confirmation message.
-        await interaction.followup.send(
-            response_bank.channel_ban_confirm.format(
-                member=member.mention, until=lenstr, reason=reason
-            ),
-            ephemeral=True
         )
 
     @channel.command(name="unban", description="Remove a channel ban role from a user.")
