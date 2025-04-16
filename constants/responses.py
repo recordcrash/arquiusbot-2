@@ -58,7 +58,7 @@ quirked_responses = {
     "channel_ban_deny_horizontal": "Horizontal bans are not allowed. Be ashamed of yourself.",
     "channel_ban_confirm": (
         "Aberrant {member} has been crushed by my strong hooves.\n\n"
-        "Expires: {until}\n"
+        "Expiration: {until}\n"
         "Reason: {reason}"
         ),
     "channel_unban_role_error": "Are you a moron? This user is not muted here.",
