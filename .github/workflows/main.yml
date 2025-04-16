@@ -1,0 +1,45 @@
+name: Deploy ArquiusBot
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    name: Deploy to server
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.6.14"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/makin/arquiusbot-2
+            git pull origin master
+
+            mkdir -p config
+
+            cat <<EOF > config/bot.json
+            ${{ secrets.BOT_JSON }}
+            EOF
+
+            cat <<EOF > config/cogs.json
+            ${{ secrets.COGS_JSON }}
+            EOF
+
+            chmod 600 config/*.json
+
+            uv sync --all-extras
+
+            sudo systemctl restart arquiusbot.service
