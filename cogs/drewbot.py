@@ -131,17 +131,14 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         embed_bot.set_footer(text="Generated with drewbot-model | Tokens: 000 | Cost: $0.0010")
         embeds.append(embed_bot)
 
-        # choose correct send function
         if interaction is not None:
-            send_func = interaction.followup.send
+            bot_msg = await interaction.followup.send(embeds=embeds)
         else:
-            send_func = channel.send
-
-        bot_msg = await send_func(
-            embeds=embeds,
-            reference=reply_target.to_reference() if reply_target else None,
-            mention_author=False,
-        )
+            bot_msg = await channel.send(
+                embeds = embeds,
+                reference = reply_target.to_reference() if reply_target else None,
+                mention_author = False,
+            )
 
         last_update = datetime.now()
         last_content = ""
