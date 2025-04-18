@@ -1,14 +1,55 @@
-from datetime import datetime, timezone
-from discord import __version__ as discord_version
-from discord import AppInfo, Message, Color, Embed, Guild, app_commands, Interaction, Thread
-from discord.ext import commands
-from logging import Logger, Formatter
+import asyncio
+from collections import deque
+from datetime import datetime, timezone, timedelta
 from logging import INFO as LOG_INFO
+from logging import Logger, Formatter
 from typing import List, TypeVar
+
+from discord import AppInfo, Message, Color, Embed, Guild, app_commands, Interaction, Thread
+from discord import __version__ as discord_version
+from discord.ext import commands
 
 from classes.database import Database
 
-Self = TypeVar("Self", bound="DiscordBot")
+
+class EditQueue:
+    """
+    A queue for managing edit rate limits (ensures edit tasks are spaced out).
+    """
+    def __init__(self, max_edits: int = 5, per_seconds: int = 5) -> None:
+        self.max_edits = max_edits
+        self.per_seconds = per_seconds
+        self.queue: deque[asyncio.coroutine] = deque()
+        self.edit_count = 0
+        self.reset_time = datetime.now(timezone.utc) + timedelta(seconds=self.per_seconds)
+        self.lock = asyncio.Lock()
+        self.task = asyncio.create_task(self.process_queue())
+
+    async def enqueue(self, coro) -> None:
+        async with self.lock:
+            self.queue.append(coro)
+
+    async def process_queue(self) -> None:
+        self.edit_count = 0
+        self.reset_time = datetime.now(timezone.utc) + timedelta(seconds=self.per_seconds)
+        while True:
+            async with self.lock:
+                now = datetime.now(timezone.utc)
+                if now >= self.reset_time:
+                    self.edit_count = 0
+                    self.reset_time = now + timedelta(seconds=self.per_seconds)
+
+                while self.queue and self.edit_count < self.max_edits:
+                    coro = self.queue.popleft()
+                    asyncio.create_task(coro)
+                    self.edit_count += 1
+
+            await asyncio.sleep(0.5)  # Slight pause between loops to avoid busy-waiting
+
+    def reset_edit_limit(self) -> None:
+        self.edit_count = 0
+        self.reset_time = datetime.now(timezone.utc) + timedelta(seconds=self.per_seconds)
+
 
 class PlebIgnoredException(app_commands.AppCommandError):
     """Raised when a command is disabled in the current channel."""
@@ -73,6 +114,8 @@ class UTCFormatter(Formatter):
             return dt.strftime(datefmt)
         return dt.isoformat()
 
+
+Self = TypeVar("Self", bound="DiscordBot")
 
 class DiscordBot(commands.Bot):
     """A Subclass of `commands.Bot`."""

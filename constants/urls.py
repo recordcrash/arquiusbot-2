@@ -24,6 +24,10 @@ image_urls = {
         'https://cdn.discordapp.com/attachments/'
         '663453347763716110/778782271775178782/EXCEPTIONAL.png'
         ),
+    'drewbot_icon': (
+        'https://cdn.discordapp.com/attachments/'
+        '193720384409960448/1350869735755223140/avatar.png'
+        ),
     'tensei_icon': (
         'https://cdn.discordapp.com/attachments/'
         '663453347763716110/850013696875954176/babyvore.gif'

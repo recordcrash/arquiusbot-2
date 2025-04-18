@@ -36,5 +36,22 @@
     },
     "misc": {
         "latex_channel_ids": [1, 2, 3] // latex can only be used in these channels
+    },
+    "drewbot": {
+        "openai_api_key": "sk-key",
+        "patron_role_id": 1,
+        "drewbot_model_choices": [ // first will be chosen by default
+          {
+            "name": "Model name",
+            "description": "Model description.",
+            "id": "id-on-chatgpt"
+          }
+        ],
+        "base_temperature": 1.0,
+        "censored_words": ["pillweef"],
+        "censor_character": "*",
+        "system_prompt": "You are...",
+        "username": "user",
+        "username_full": "User"
     }
 }

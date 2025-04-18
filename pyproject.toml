@@ -1,8 +1,10 @@
 [project]
 name = "arquiusbot-2"
 version = "1.0"
-description = "Add your description here"
+description = "Discord bot for the Homestuck Discord and others"
 requires-python = ">=3.12"
 dependencies = [
-    "discord-py[speed]==2.5.2",
+    "discord-py[speed]>=2.5.2",
+    "openai==1.66.3",
+    "attrs>=21.3.0",
 ]
