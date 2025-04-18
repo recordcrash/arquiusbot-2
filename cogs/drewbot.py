@@ -214,22 +214,6 @@ class DrewBotCog(commands.Cog, name="drewbot"):
                 pass
             self.last_edit = datetime.now()
 
-    async def send_with_webhook(self, interaction: discord.Interaction, content: str) -> None:
-        """
-        Sends the given content using a webhook with a custom username ("Drewbot")
-        and avatar from DREWBOT_ICON.
-        """
-        channel = interaction.channel
-        webhooks = await channel.webhooks()
-        webhook = None
-        for wh in webhooks:
-            if wh.user.id == self.bot.user.id:
-                webhook = wh
-                break
-        if webhook is None:
-            webhook = await channel.create_webhook(name="Drewbot Webhook")
-        await webhook.send(content, username="Drewbot", avatar_url=url_bank.drewbot_icon)
-
     async def model_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
