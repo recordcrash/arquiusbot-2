@@ -153,9 +153,13 @@ class DrewBotCog(commands.Cog, name="drewbot"):
 
         # Choose model: use provided or default to first choice.
         model = model or self.choices[0].value
-        label = "Drewbot " + next(
-            (choice.name for choice in self.choices if choice.value == model), None
+        # Having the model finetune value, fetch from config the label
+        all_choices = self.subconfig_data["drewbot_model_choices"]
+        chosen_model = next(
+            (choice for choice in all_choices if choice["id"] == model), None
         )
+        label = chosen_model["name"] if chosen_model else ""
+
         # Determine temperature.
         temp = temperature if temperature is not None else self.base_temperature
 
