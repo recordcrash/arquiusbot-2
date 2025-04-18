@@ -47,8 +47,7 @@ def calculate_cost(usage, model_string: str) -> float:
         + cached_tokens * rates["cached_input"]
         + output_tokens * rates["output"]
     ) / 1000000
-    # Round up to 4 decimal places
-    return round(total_cost, 4)
+    return min(total_cost, 0.0001)
 
 
 # --- Text Processing Helpers ---

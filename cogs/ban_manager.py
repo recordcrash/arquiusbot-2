@@ -13,6 +13,9 @@ from classes.response_bank import response_bank
 # 'm' is interpreted as month (732 hours), while 'min' represents one minute (1/60 hours).
 _unit_dict = {'h': 1, 'd': 24, 'w': 168, 'm': 732, 'y': 8766, 'min': 1 / 60}
 
+# Upper bound: 100 years  (100 × 8 766 h)
+_MAX_BAN_HOURS = 8_766 * 100
+
 
 class BanManager(commands.Cog, name="ban_manager"):
     """Manages channel bans using roles, with scheduled unbans stored in SQLite."""
@@ -26,18 +29,29 @@ class BanManager(commands.Cog, name="ban_manager"):
         self.manage_mutelist.cancel()
 
     def _parse_length(self, length: str) -> Optional[float]:
-        """Parses duration strings (e.g., '3h', '1d', '1min') into hours.
+        """
+        Turn a duration string (e.g. '3h', '2d', '1min') into hours.
 
-        Returns None for permanent bans.
+        Returns None for permanent bans ('perma').
+        Raises ValueError for bad formats or durations > 100 years.
         """
         length = length.strip()
         if length.lower() == "perma":
             return None
-        if match := re.match(r"(\d+)(min|[hdwmy])$", length, re.IGNORECASE):
-            number = int(match[1])
-            unit = match[2].lower()
-            return number * _unit_dict[unit]
-        raise ValueError(response_bank.channel_ban_duration_error.format(length=length))
+
+        match = re.match(r"(\d+)(min|[hdwmy])$", length, re.IGNORECASE)
+        if not match:
+            raise ValueError(
+                response_bank.channel_ban_duration_error.format(length=length)
+            )
+
+        number = int(match[1])
+        unit = match[2].lower()
+        hours = number * _unit_dict[unit]
+
+        if hours > _MAX_BAN_HOURS:
+            raise ValueError(f"Duration too long: max is 100 years.")
+        return hours
 
     async def _log_mod(self, embed: discord.Embed) -> None:
         """Logs moderation actions in the modlog channel."""
