@@ -116,14 +116,13 @@ def bot_has_permissions(**perms: bool):
 
     return wrapped
 
-def channel_enabled(interaction: discord.Interaction) -> bool:
-    """Check that the channel is not in the ignored category."""
-    if isinstance(interaction.channel, discord.Thread):
-        target_channel = interaction.channel.parent
-    else:
-        target_channel = interaction.channel
-    ignore_channels = interaction.client.db.get_channel_category("ignoreplebs")
-    return target_channel and (target_channel.id not in ignore_channels)
+def user_has_role(interaction: discord.Interaction, role_id: int) -> bool:
+    """
+    Check that the invoking user has the role.
+    """
+    if isinstance(interaction.user, discord.Member):
+        return any(role.id == role_id for role in interaction.user.roles)
+    return False
 
 class GuildContext(commands.Context):
     author: discord.Member

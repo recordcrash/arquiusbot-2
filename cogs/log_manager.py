@@ -1,3 +1,4 @@
+import io
 import logging
 from datetime import datetime, timezone
 
@@ -66,18 +67,18 @@ class LogManager(commands.Cog):
             return
 
         now = datetime.now(timezone.utc)
+        log_file = "discord.log"
 
-        log_file = 'discord.log'
-
-        # Read log file, send content if not empty
         try:
-            with open(log_file, 'rb') as logfile:
-                code = logfile.read()
-                if code:
-                    logfile.seek(0)
+            with open(log_file, "rb") as logfile:
+                content = logfile.read()
+                if content:
+                    # Wrap the log file content in a BytesIO object.
+                    file_buffer = io.BytesIO(content)
+                    file_buffer.seek(0)
                     await self.log_channel.send(
                         f"ArquiusBot Log @ {now}",
-                        file=discord.File(logfile, 'errors.log')
+                        file=discord.File(file_buffer, "errors.log"),
                     )
         except FileNotFoundError:
             self.bot.log(
@@ -88,9 +89,9 @@ class LogManager(commands.Cog):
             )
             return
 
-        # Truncate log file
+        # Truncate log file after sending.
         try:
-            with open(log_file, 'w') as logfile:
+            with open(log_file, "w") as logfile:
                 logfile.truncate(0)
         except Exception as e:
             self.bot.log(
