@@ -71,7 +71,10 @@ class EventListeners(commands.Cog, name="events"):
     async def on_member_remove(self, member: discord.Member) -> None:
         """Handles a user leaving the server, saving their roles."""
         roles_to_save = [role.id for role in member.roles if role.id != member.guild.id]
-        self.bot.db.update_member_last_roles(member.id, roles_to_save)
+        if roles_to_save:
+            self.bot.db.update_member_last_roles(member.id, roles_to_save)
+        else:
+            self.bot.db.delete_member_last_roles(member.id)
 
     @commands.Cog.listener()
     async def on_message(self, msg: discord.Message) -> None:
