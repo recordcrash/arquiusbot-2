@@ -72,12 +72,12 @@ class DrewBotCog(commands.Cog, name="drewbot"):
             del self.active_conversations[(channel_id, msg_id)]
 
     async def safe_edit_message(self, msg, **kwargs):
-        async with self.edit_lock:
-            now = datetime.now()
-            if len(self.edit_timestamps) == 5 and (now - self.edit_timestamps[0]).total_seconds() < 5:
-                await asyncio.sleep(5 - (now - self.edit_timestamps[0]).total_seconds())
+        """
+        Queue the edit so that all cogs share a single rate‑limited pipeline.
+        """
+        async def _do_edit():
             await msg.edit(**kwargs)
-            self.edit_timestamps.append(datetime.now())
+        await self.bot.edit_queue.enqueue(_do_edit())
 
     async def send_with_webhook(self, interaction: discord.Interaction, content: str) -> None:
         """
@@ -164,12 +164,12 @@ class DrewBotCog(commands.Cog, name="drewbot"):
             temperature=temp
         )
 
-        # Embed 1: caller prompt
+        # Embed for the caller's prompt
         embed_user = discord.Embed(color=discord.Color.blurple())
         embed_user.set_author(name=f"{interaction.user.name}:", icon_url=interaction.user.display_avatar.url)
         embed_user.description = prompt
 
-        # Embed 2: Drewbot reply (updates as it streams)
+        # Embed for Drewbot's reply
         embed_bot = discord.Embed(color=discord.Color.green())
         embed_bot.set_author(name="Drewbot", icon_url=url_bank.drewbot_icon)
         embed_bot.description = "<a:loading:1351145092659937280>"
@@ -179,18 +179,28 @@ class DrewBotCog(commands.Cog, name="drewbot"):
 
         last_update = datetime.now()
         last_content = ""
+        full_content = ""
+        footer_text = embed_bot.footer.text
         response_id = None
         async for gen_id, content, footer in response_gen:
+            response_id = gen_id
+            full_content = openai_client.sanitize_for_embed(content)
+            footer_text = footer
             if (
-                content != last_content
+                full_content != last_content
                 and (datetime.now() - last_update).total_seconds() > 1.0
             ):
-                response_id = gen_id
-                embed_bot.description = openai_client.sanitize_for_embed(content)
-                embed_bot.set_footer(text=footer)
-                await sent_message.edit(embeds=[embed_user, embed_bot])
-                last_content = content
+                embed_bot.description = f"{full_content}\n<a:loading:1351145092659937280>"
+                embed_bot.set_footer(text=footer_text)
+                await self.safe_edit_message(sent_message, embeds=[embed_user, embed_bot])
+                last_content = full_content
                 last_update = datetime.now()
+
+        # Final edit with complete text (loading icon removed).
+        if full_content:
+            embed_bot.description = full_content
+            embed_bot.set_footer(text=footer_text)
+            await self.safe_edit_message(sent_message, embeds=[embed_user, embed_bot])
 
         # Store conversation state
         if response_id:

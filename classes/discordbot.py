@@ -16,7 +16,7 @@ class EditQueue:
     """
     A queue for managing edit rate limits (ensures edit tasks are spaced out).
     """
-    def __init__(self, max_edits: int = 5, per_seconds: int = 5) -> None:
+    def __init__(self, max_edits: int = 3, per_seconds: int = 6) -> None:
         self.max_edits = max_edits
         self.per_seconds = per_seconds
         self.queue: deque[asyncio.coroutine] = deque()
@@ -135,6 +135,9 @@ class DiscordBot(commands.Bot):
     prefixes: dict = dict()
     """List of prefixes per guild."""
 
+    edit_queue: EditQueue | None = None
+    """Queue for managing edit rate limits."""
+
     uptime: datetime = datetime.now(timezone.utc)
     """Bot's uptime."""
 
@@ -155,7 +158,9 @@ class DiscordBot(commands.Bot):
 
         # Prefix is admin-only, and needs to not be a slash command because it includes slash-command related actions
         kwargs.pop("command_prefix", None) # remove kwarg if exists
-        
+
+        self.edit_queue = EditQueue()
+
         super().__init__(command_prefix = get_prefix, **kwargs)
 
     def get_current_guild(self) -> Guild:
