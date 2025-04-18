@@ -153,6 +153,9 @@ class DrewBotCog(commands.Cog, name="drewbot"):
 
         # Choose model: use provided or default to first choice.
         model = model or self.choices[0].value
+        label = "Drewbot " + next(
+            (choice.name for choice in self.choices if choice.value == model), None
+        )
         # Determine temperature.
         temp = temperature if temperature is not None else self.base_temperature
 
@@ -167,10 +170,11 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         real_prompt = self.botify_input_text(username=interaction.user.name, text=prompt)
         response_gen = openai_client.stream_response(
             model=model,
+            label=label,
             system_prompt=self.system_prompt,
             prompt=real_prompt,
             prev_resp_id=None,
-            temperature=temp
+            temperature=temp,
         )
 
         # Embed for the caller's prompt

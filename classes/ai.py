@@ -41,12 +41,12 @@ def calculate_cost(usage, model_string: str) -> float:
     cached_tokens = usage.input_tokens_details.get("cached_tokens", 0)
     output_tokens = usage.output_tokens
 
-    # Multiply token counts by their respective rates, then divide by 1 million.
+    # Multiply token counts by their respective rates, then divide by 1000.
     total_cost = (
         input_tokens * rates["input"]
         + cached_tokens * rates["cached_input"]
         + output_tokens * rates["output"]
-    ) / 1000000.0
+    ) / 1000.0
     return total_cost
 
 
@@ -92,7 +92,7 @@ class AIClient:
         self.censor_character: str = censor_character
         self.server_emotes: dict[str, str] = server_emotes
 
-    async def stream_response(self, model: str, system_prompt: str, prompt: str, prev_resp_id: str | None=None, temperature: float=1.0)\
+    async def stream_response(self, model: str, label: str, system_prompt: str, prompt: str, prev_resp_id: str | None=None, temperature: float=1.0)\
             -> AsyncGenerator[tuple[str | None, str | Any, str], Any]:
         input_characters = len(prompt)
         input_tokens = input_characters // 4
@@ -110,9 +110,11 @@ class AIClient:
             stream=True,
         )
 
+        model_label = label or get_user_friendly_model_string(model)
+
         content = ""
         footer = (
-            f"Generated with {get_user_friendly_model_string(model)} | "
+            f"Generated with {model_label} | "
             f"Tokens: {input_tokens} | "
             f"Cost: $0.0010"
         )
@@ -129,7 +131,7 @@ class AIClient:
                 if event.response.usage:
                     cost = calculate_cost(event.response.usage, model)
                     footer = (
-                        f"Generated with {get_user_friendly_model_string(model)} | "
+                        f"Generated with {model_label} | "
                         f"Tokens: {event.response.usage.total_tokens} | "
                         f"Cost: ${cost:.4f}"
                     )
