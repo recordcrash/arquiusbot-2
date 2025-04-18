@@ -81,7 +81,6 @@ class DrewBotCog(commands.Cog, name="drewbot"):
             temperature=temp,
             prev_resp_id=prev_resp_id,
             reply_target=message,
-            show_user_embed=False,
         )
         await message.add_reaction("💬")
 
@@ -95,9 +94,9 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         model_id: str,
         label: str,
         temperature: float,
-        prev_resp_id: str | None,
-        reply_target: discord.Message | None,
-        show_user_embed: bool,
+        prev_resp_id: str | None = None,
+        reply_target: discord.Message | None = None,
+        show_user_embed: bool = False,
     ) -> None:
         """Runs the OpenAI stream and handles embeds/edits."""
         openai_client = AIClient(
@@ -240,7 +239,6 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         prompt: str,
         model: str | None = None,
         temperature: float | None = None,
-        _prev_resp_id: str | None = None,
     ) -> None:
         """
         Sends the user's prompt to OpenAI's Responses API and returns the processed reply.
@@ -271,8 +269,6 @@ class DrewBotCog(commands.Cog, name="drewbot"):
             model_id=model_id,
             label=label,
             temperature=temp,
-            prev_resp_id=_prev_resp_id,
-            reply_target=None,
             show_user_embed=True,
         )
 

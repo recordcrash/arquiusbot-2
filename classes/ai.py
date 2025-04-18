@@ -100,6 +100,8 @@ class AIClient:
         max_characters = real_max_output_characters - input_characters
         max_tokens = max_characters * 4
 
+        print(f"Received prompt: {prompt}. Received previous response ID: {prev_resp_id}.")
+
         stream = await self.client.responses.create(
             model=model,
             input=prompt,
@@ -121,7 +123,6 @@ class AIClient:
         response_id = None
 
         async for event in stream:
-            print(event)
             if event.type == "response.created":
                 response_id = event.response.id
             elif event.type == "response.output_text.delta":
