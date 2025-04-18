@@ -65,6 +65,13 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         ):
             return
 
+        author_is_patron = any(
+            role.id in self.patron_role_ids for role in getattr(message.author, "roles", [])
+        )
+        author_is_mod = message.author.guild_permissions.manage_roles
+        if not author_is_patron and not author_is_mod:
+            return
+
         key = (message.channel.id, message.reference.message_id)
         convo = self.active_conversations.get(key)
         if convo is None:
