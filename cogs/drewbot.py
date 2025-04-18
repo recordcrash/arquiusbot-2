@@ -1,5 +1,4 @@
 import asyncio
-from collections import deque
 from datetime import datetime, timezone, timedelta
 
 import discord
@@ -11,10 +10,12 @@ from classes.ai import AIClient
 from classes.discordbot import DiscordBot
 from classes.response_bank import url_bank  # Constant for Drewbot's avatar URL
 
+
 class DrewBotCog(commands.Cog, name="drewbot"):
     """
     Lets Patrons interact with Drewbot.
     """
+
     def __init__(self, bot: DiscordBot) -> None:
         self.bot = bot
         # Bot data
@@ -35,8 +36,8 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         self.username_full = self.subconfig_data["username_full"]
         # Storage variables
         self.server_emotes: dict[str, str] = {}
-        # {(channel_id, discord_msg_id): (openai_response_id, datetime)}
-        self.active_conversations: dict[(int, int), (str, datetime)] = {}
+        # {(channel_id, discord_msg_id): (openai_response_id, datetime, model_id, temperature, label)}
+        self.active_conversations: dict[(int, int), (str, datetime, str, float, str)] = {}
         self.edit_lock = asyncio.Lock()
         self.last_edit: datetime | None = None  # timestamp of the most recent edit
         self.conversation_timeout = timedelta(minutes=30)
@@ -50,6 +51,131 @@ class DrewBotCog(commands.Cog, name="drewbot"):
     async def on_ready(self) -> None:
         self.server_emotes = await self.initialize_emotes()
 
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        """
+        If someone replies to a Drewbot message we still remember,
+        continue the conversation from that point.
+        """
+        if (
+            message.author.bot
+            or message.guild is None
+            or message.reference is None
+            or message.reference.message_id is None
+        ):
+            return
+
+        key = (message.channel.id, message.reference.message_id)
+        convo = self.active_conversations.get(key)
+        if convo is None:
+            return  # not an active Drewbot thread
+
+        prev_resp_id, _ts, model_id, temp, label = convo
+        await self._drewbot_respond(
+            interaction=None,
+            channel=message.channel,
+            author=message.author,
+            prompt=message.clean_content(),
+            model_id=model_id,
+            label=label,
+            temperature=temp,
+            prev_resp_id=prev_resp_id,
+            reply_target=message,
+            show_user_embed=False,
+        )
+        await message.add_reaction("💬")
+
+    async def _drewbot_respond(
+        self,
+        *,
+        interaction: discord.Interaction | None,
+        channel: discord.abc.Messageable,
+        author: discord.Member | discord.User,
+        prompt: str,
+        model_id: str,
+        label: str,
+        temperature: float,
+        prev_resp_id: str | None,
+        reply_target: discord.Message | None,
+        show_user_embed: bool,
+    ) -> None:
+        """Runs the OpenAI stream and handles embeds/edits."""
+        openai_client = AIClient(
+            api_key=self.api_key,
+            censored_words=self.censored_words,
+            censor_character=self.censor_character,
+            server_emotes=self.server_emotes,
+        )
+
+        real_prompt = self.botify_input_text(username=author.name, text=prompt)
+        response_gen = openai_client.stream_response(
+            model=model_id,
+            label=label,
+            system_prompt=self.system_prompt,
+            prompt=real_prompt,
+            prev_resp_id=prev_resp_id,
+            temperature=temperature,
+        )
+
+        embeds: list[discord.Embed] = []
+
+        if show_user_embed:
+            embed_user = discord.Embed(color=discord.Color.blurple())
+            embed_user.set_author(name=f"{author.name}", icon_url=author.display_avatar.url)
+            embed_user.description = prompt
+            embeds.append(embed_user)
+
+        embed_bot = discord.Embed(color=discord.Color.green())
+        embed_bot.set_author(name="Drewbot", icon_url=url_bank.drewbot_icon)
+        embed_bot.description = "<a:loading:1351145092659937280>"
+        embed_bot.set_footer(text="Generated with drewbot-model | Tokens: 000 | Cost: $0.0010")
+        embeds.append(embed_bot)
+
+        # choose correct send function
+        if interaction is not None:
+            send_func = interaction.followup.send
+        else:
+            send_func = channel.send
+
+        bot_msg = await send_func(
+            embeds=embeds,
+            reference=reply_target.to_reference() if reply_target else None,
+            mention_author=False,
+        )
+
+        last_update = datetime.now()
+        last_content = ""
+        full_content = ""
+        footer_text = embed_bot.footer.text
+        response_id = None
+        async for gen_id, content, footer in response_gen:
+            response_id = gen_id
+            full_content = openai_client.sanitize_for_embed(content)
+            footer_text = footer
+            if (
+                full_content != last_content
+                and (datetime.now() - last_update).total_seconds() > 0.5
+            ):
+                embed_bot.description = f"{full_content}\n<a:loading:1351145092659937280>"
+                embed_bot.set_footer(text=footer_text)
+                await self.safe_edit_message(bot_msg, embeds=embeds)
+                last_content = full_content
+                last_update = datetime.now()
+
+        if full_content:
+            embed_bot.description = full_content
+            embed_bot.set_footer(text=footer_text)
+            await self.safe_edit_message(bot_msg, embeds=embeds)
+
+        if response_id:
+            self.active_conversations[(bot_msg.channel.id, bot_msg.id)] = (
+                response_id,
+                datetime.now(timezone.utc),
+                model_id,
+                temperature,
+                label,
+            )
+
     async def cog_unload(self):
         self.prune_conversations.cancel()
 
@@ -57,19 +183,19 @@ class DrewBotCog(commands.Cog, name="drewbot"):
     async def prune_conversations(self):
         expired = []
         now = datetime.now(timezone.utc)
-        for (channel_id, msg_id), (resp_id, timestamp) in self.active_conversations.items():
+        for (channel_id, msg_id), (resp_id, timestamp, *_rest) in self.active_conversations.items():
             if now - timestamp > self.conversation_timeout:
                 channel = self.bot.get_channel(channel_id)
-                msg =  await channel.fetch_message(msg_id)
-                if msg:
-                    embed = msg.embeds[1]  # Drewbot embed is second
+                msg = await channel.fetch_message(msg_id)
+                if msg and msg.embeds:
+                    embed = msg.embeds[-1]
                     footer = embed.footer.text
                     if footer:
                         embed.set_footer(text=f"{footer}|Bot will not remember this conversation's history.")
-                    await self.safe_edit_message(msg, embeds=[msg.embeds[0], embed])
+                    await self.safe_edit_message(msg, embeds=msg.embeds)
                 expired.append((channel_id, msg_id))
-        for (channel_id, msg_id) in expired:
-            del self.active_conversations[(channel_id, msg_id)]
+        for k in expired:
+            del self.active_conversations[k]
 
     async def safe_edit_message(self, msg, **kwargs):
         """
@@ -118,12 +244,9 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         """
         if username in [self.username, self.username_full]:
             username = "dirtbreadman"
-        ft_message = f"{username}: {text}\n{self.username}: "
-        return ft_message
+        return f"{username}: {text}\n{self.username}: "
 
-    @app_commands.command(
-        name="drewbot", description="Chat with Drewbot. (Patron-only)"
-    )
+    @app_commands.command(name="drewbot", description="Chat with Drewbot. (Patron-only)")
     @app_commands.describe(
         prompt="Your message",
         model="Select a model (default is the first in the list)",
@@ -136,6 +259,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         prompt: str,
         model: str | None = None,
         temperature: float | None = None,
+        _prev_resp_id: str | None = None,
     ) -> None:
         """
         Sends the user's prompt to OpenAI's Responses API and returns the processed reply.
@@ -151,78 +275,25 @@ class DrewBotCog(commands.Cog, name="drewbot"):
             )
             return
 
-        # Choose model: use provided or default to first choice.
-        model = model or self.choices[0].value
-        # Having the model finetune value, fetch from config the label
+        model_id = model or self.choices[0].value
         all_choices = self.subconfig_data["drewbot_model_choices"]
-        chosen_model = next(
-            (choice for choice in all_choices if choice["id"] == model), None
-        )
-        label = chosen_model["name"] if chosen_model else ""
-
-        # Determine temperature.
+        chosen = next((c for c in all_choices if c["id"] == model_id), None)
+        label = chosen["name"] if chosen else ""
         temp = temperature if temperature is not None else self.base_temperature
 
         await interaction.response.defer()
-        openai_client = AIClient(
-            api_key=self.api_key,
-            censored_words=self.censored_words,
-            censor_character=self.censor_character,
-            server_emotes=self.server_emotes,
-        )
-
-        real_prompt = self.botify_input_text(username=interaction.user.name, text=prompt)
-        response_gen = openai_client.stream_response(
-            model=model,
+        await self._drewbot_respond(
+            interaction=interaction,
+            channel=interaction.channel,
+            author=interaction.user,
+            prompt=prompt,
+            model_id=model_id,
             label=label,
-            system_prompt=self.system_prompt,
-            prompt=real_prompt,
-            prev_resp_id=None,
             temperature=temp,
+            prev_resp_id=_prev_resp_id,
+            reply_target=None,
+            show_user_embed=True,
         )
-
-        # Embed for the caller's prompt
-        embed_user = discord.Embed(color=discord.Color.blurple())
-        embed_user.set_author(name=f"{interaction.user.name}:", icon_url=interaction.user.display_avatar.url)
-        embed_user.description = prompt
-
-        # Embed for Drewbot's reply
-        embed_bot = discord.Embed(color=discord.Color.green())
-        embed_bot.set_author(name="Drewbot", icon_url=url_bank.drewbot_icon)
-        embed_bot.description = "<a:loading:1351145092659937280>"
-        embed_bot.set_footer(text="Generated with drewbot-model | Tokens: 000 | Cost: $0.0010")
-
-        sent_message = await interaction.followup.send(embeds=[embed_user, embed_bot])
-
-        last_update = datetime.now()
-        last_content = ""
-        full_content = ""
-        footer_text = embed_bot.footer.text
-        response_id = None
-        async for gen_id, content, footer in response_gen:
-            response_id = gen_id
-            full_content = openai_client.sanitize_for_embed(content)
-            footer_text = footer
-            if (
-                full_content != last_content
-                and (datetime.now() - last_update).total_seconds() > 0.5
-            ):
-                embed_bot.description = f"{full_content}\n<a:loading:1351145092659937280>"
-                embed_bot.set_footer(text=footer_text)
-                await self.safe_edit_message(sent_message, embeds=[embed_user, embed_bot])
-                last_content = full_content
-                last_update = datetime.now()
-
-        # Final edit with complete text (loading icon removed).
-        if full_content:
-            embed_bot.description = full_content
-            embed_bot.set_footer(text=footer_text)
-            await self.safe_edit_message(sent_message, embeds=[embed_user, embed_bot])
-
-        # Store conversation state
-        if response_id:
-            self.active_conversations[(interaction.channel_id, sent_message.id)] = \
-                (response_id, datetime.now(timezone.utc))
 
 
 async def setup(bot: DiscordBot) -> None:
