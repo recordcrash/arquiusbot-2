@@ -12,45 +12,6 @@ from discord.ext import commands
 from classes.database import Database
 
 
-class EditQueue:
-    """
-    A queue for managing edit rate limits (ensures edit tasks are spaced out).
-    """
-    def __init__(self, max_edits: int = 3, per_seconds: int = 6) -> None:
-        self.max_edits = max_edits
-        self.per_seconds = per_seconds
-        self.queue: deque[asyncio.coroutine] = deque()
-        self.edit_count = 0
-        self.reset_time = datetime.now(timezone.utc) + timedelta(seconds=self.per_seconds)
-        self.lock = asyncio.Lock()
-        self.task = asyncio.create_task(self.process_queue())
-
-    async def enqueue(self, coro) -> None:
-        async with self.lock:
-            self.queue.append(coro)
-
-    async def process_queue(self) -> None:
-        self.edit_count = 0
-        self.reset_time = datetime.now(timezone.utc) + timedelta(seconds=self.per_seconds)
-        while True:
-            async with self.lock:
-                now = datetime.now(timezone.utc)
-                if now >= self.reset_time:
-                    self.edit_count = 0
-                    self.reset_time = now + timedelta(seconds=self.per_seconds)
-
-                while self.queue and self.edit_count < self.max_edits:
-                    coro = self.queue.popleft()
-                    asyncio.create_task(coro)
-                    self.edit_count += 1
-
-            await asyncio.sleep(0.5)  # Slight pause between loops to avoid busy-waiting
-
-    def reset_edit_limit(self) -> None:
-        self.edit_count = 0
-        self.reset_time = datetime.now(timezone.utc) + timedelta(seconds=self.per_seconds)
-
-
 class PlebIgnoredException(app_commands.AppCommandError):
     """Raised when a command is disabled in the current channel."""
     def __init__(self, message: str = "D--> Neigh, you may not command me here."):
@@ -135,9 +96,6 @@ class DiscordBot(commands.Bot):
     prefixes: dict = dict()
     """List of prefixes per guild."""
 
-    edit_queue: EditQueue | None = None
-    """Queue for managing edit rate limits."""
-
     uptime: datetime = datetime.now(timezone.utc)
     """Bot's uptime."""
 
@@ -158,8 +116,6 @@ class DiscordBot(commands.Bot):
 
         # Prefix is admin-only, and needs to not be a slash command because it includes slash-command related actions
         kwargs.pop("command_prefix", None) # remove kwarg if exists
-
-        self.edit_queue = EditQueue()
 
         super().__init__(command_prefix = get_prefix, **kwargs)
 

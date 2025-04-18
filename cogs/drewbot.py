@@ -38,7 +38,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         # {(channel_id, discord_msg_id): (openai_response_id, datetime)}
         self.active_conversations: dict[(int, int), (str, datetime)] = {}
         self.edit_lock = asyncio.Lock()
-        self.edit_timestamps = deque(maxlen=5)  # store last 5 edit times
+        self.last_edit: datetime | None = None  # timestamp of the most recent edit
         self.conversation_timeout = timedelta(minutes=30)
         self.prune_conversations.start()
 
@@ -73,11 +73,20 @@ class DrewBotCog(commands.Cog, name="drewbot"):
 
     async def safe_edit_message(self, msg, **kwargs):
         """
-        Queue the edit so that all cogs share a single rate‑limited pipeline.
+        Edits a message but guarantees we never exceed 1 edit / 0.5s for *this bot*.
+        The lock ensures concurrent cogs cooperate.
         """
-        async def _do_edit():
-            await msg.edit(**kwargs)
-        await self.bot.edit_queue.enqueue(_do_edit())
+        async with self.edit_lock:
+            now = datetime.now()
+            if self.last_edit is not None:
+                elapsed = (now - self.last_edit).total_seconds()
+                if elapsed < 0.5:
+                    await asyncio.sleep(0.5 - elapsed)
+            try:
+                await msg.edit(**kwargs)
+            except (discord.HTTPException, discord.NotFound):
+                pass
+            self.last_edit = datetime.now()
 
     async def send_with_webhook(self, interaction: discord.Interaction, content: str) -> None:
         """
@@ -188,7 +197,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
             footer_text = footer
             if (
                 full_content != last_content
-                and (datetime.now() - last_update).total_seconds() > 1.0
+                and (datetime.now() - last_update).total_seconds() > 0.5
             ):
                 embed_bot.description = f"{full_content}\n<a:loading:1351145092659937280>"
                 embed_bot.set_footer(text=footer_text)
