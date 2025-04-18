@@ -39,7 +39,7 @@
     },
     "drewbot": {
         "openai_api_key": "sk-key",
-        "patron_role_id": 1,
+        "patron_role_ids": [1], // role ids that can use the bot
         "drewbot_model_choices": [ // first will be chosen by default
           {
             "name": "Model name",

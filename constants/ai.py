@@ -1,5 +1,5 @@
 # Pricing table for various models.
-# All values are in dollars per 1,000 tokens.
+# All values are in dollars per 1,000,000 tokens.
 MODEL_PRICING_TABLE = {
     "gpt-4.1-2025-04-14": {
         "input": 2.00,

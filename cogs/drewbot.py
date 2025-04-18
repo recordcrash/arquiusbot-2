@@ -24,7 +24,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         # Cog exclusive data
         self.subconfig_data = self.bot.config["cogs"][self.__cog_name__.lower()]
         self.api_key = self.subconfig_data["openai_api_key"]
-        self.patron_role_id = self.subconfig_data["patron_role_id"]
+        self.patron_role_ids = self.subconfig_data["patron_role_ids"]
         self.model_choices = self.subconfig_data["drewbot_model_choices"]
         self.choices: list[app_commands.Choice[str]] = []
         for choice in self.model_choices:
@@ -244,7 +244,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         The final message is sent via a webhook with the nickname "Drewbot" and a custom avatar.
         A footer is appended on a new line using the "-# " syntax.
         """
-        user_is_patron = user_has_role(interaction, self.patron_role_id)
+        user_is_patron = any(user_has_role(interaction, role) for role in self.patron_role_ids)
         user_is_mod = interaction.user.guild_permissions.manage_roles
         if not user_is_patron and not user_is_mod:
             await interaction.response.send_message(

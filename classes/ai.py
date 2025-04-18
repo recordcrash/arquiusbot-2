@@ -41,13 +41,14 @@ def calculate_cost(usage, model_string: str) -> float:
     cached_tokens = usage.input_tokens_details.get("cached_tokens", 0)
     output_tokens = usage.output_tokens
 
-    # Multiply token counts by their respective rates, then divide by 1000.
+    # Multiply token counts by their respective rates, then divide by million
     total_cost = (
         input_tokens * rates["input"]
         + cached_tokens * rates["cached_input"]
         + output_tokens * rates["output"]
-    ) / 1000.0
-    return total_cost
+    ) / 1000000
+    # Round up to 4 decimal places
+    return round(total_cost, 4)
 
 
 # --- Text Processing Helpers ---
