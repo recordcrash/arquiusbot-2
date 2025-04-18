@@ -85,12 +85,12 @@ The bot will sync slash commands to your server on startup.
 |----------------------|-------------------------------------------------|
 | `/banlist`           | Show a list of active channel bans.             |
 | `/channel ban`       | Temporarily ban a user in the channel.          |
-| `/channel memeban`   | Fake ban a user in the channel.                 |
 | `/channel unban`     | Remove a channel ban role from a user.          |
 | `/daily`             | Manually post the daily stats report.           |
 | `/flex`              | Request a STRONG flex from the bot.             |
 | `/generate <option>` | Generate fun random names (tavern, troll, etc). |
 | `/ignoreplebs`       | Toggle command execution restrictions.          |
+| `/info`              | Shows basic user data.                          |
 | `/latex`             | Render a LaTeX equation.                        |
 | `/linky`             | Trigger Linkybot message.                       |
 | `/modhelp`           | Show moderation commands.                       |

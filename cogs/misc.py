@@ -3,7 +3,7 @@ import re
 import json
 import random
 import aiohttp
-from datetime import datetime
+from datetime import datetime, timezone
 
 import discord
 from discord import app_commands
@@ -153,6 +153,50 @@ class Misc(commands.Cog, name="misc"):
         )
         embed.set_author(name='Got a feature?', icon_url=self.bot.user.display_avatar.url)
         await interaction.response.send_message(embed=embed)
+
+    @app_commands.guild_only
+    @app_commands.command(name="info", description="Display information about a user.")
+    @app_commands.describe(member="The user to inspect (defaults to you).")
+    async def user_info(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member | None = None
+    ) -> None:
+        """Displays basic account and guild stats for a user."""
+        dt_format = '%d/%m/%Y at %H:%M:%S UTC'
+        target = member or interaction.user
+        now = datetime.now(timezone.utc)
+
+        embed = discord.Embed(color=target.color, timestamp=now)
+        embed.set_author(name=f'Information for {target}')
+        embed.set_thumbnail(url=target.display_avatar.url)
+
+        embed.add_field(
+            name='Account Created On:',
+            value=f'```{target.created_at.strftime(dt_format)}\n'
+                  f'{(now - target.created_at).days} day(s) ago```'
+        )
+        embed.add_field(
+            name='Guild Joined On:',
+            value=f'```{target.joined_at.strftime(dt_format)}\n'
+                  f'{(now - target.joined_at).days} day(s) ago```'
+        )
+        embed.add_field(name='User ID:', value=f'`{target.id}`', inline=False)
+
+        roles_list = ', '.join(role.name for role in target.roles[:0:-1]) or 'No roles.'
+        # Discord field limit safeguard.
+        if len(roles_list) > 1014:
+            roles_list = roles_list[:1011] + '...'
+        embed.add_field(name='Roles:', value=f'```{roles_list}```', inline=False)
+
+        if target == self.bot.user:
+            msg = 'D--> Do you wish to check out my STRONG muscles?'
+        elif target != interaction.user:
+            msg = 'D--> It seems you\'re a bit of a stalker, aren\'t you?'
+        else:
+            msg = 'D--> I understand the need to look at yourself in the mirror.'
+
+        await interaction.response.send_message(msg, embed=embed)
 
 async def setup(bot: DiscordBot) -> None:
     await bot.add_cog(Misc(bot))
