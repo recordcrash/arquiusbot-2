@@ -82,7 +82,6 @@ class DrewBotCog(commands.Cog, name="drewbot"):
             prev_resp_id=prev_resp_id,
             reply_target=message,
         )
-        await message.add_reaction("💬")
 
     async def _drewbot_respond(
         self,

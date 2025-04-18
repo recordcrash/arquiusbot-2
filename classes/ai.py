@@ -100,7 +100,7 @@ class AIClient:
         max_characters = real_max_output_characters - input_characters
         max_tokens = max_characters * 4
 
-        print(f"Received prompt: {prompt}. Received previous response ID: {prev_resp_id}. Received model: {model}. Received system prompt: {system_prompt}. Received temperature: {temperature}. Received max tokens: {max_tokens}.")
+        print(f"Received prompt: {prompt}")
 
         stream = await self.client.responses.create(
             model=model,
