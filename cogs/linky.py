@@ -114,28 +114,41 @@ class Linky(commands.Cog, name="linky"):
         self, interaction: discord.Interaction, *, query: str = ""
     ) -> None:
         """Retrieves a stored message from LinkyBot and sends it."""
+        embeds = []
+
+        if query:
+            user_embed = discord.Embed(
+                description=query,
+                color=interaction.user.color if hasattr(interaction.user, "color") else discord.Color.blurple()
+            )
+            user_embed.set_author(
+                name=interaction.user.display_name,
+                icon_url=interaction.user.display_avatar.url
+            )
+            embeds.append(user_embed)
+
         admin = interaction.guild.get_member(self.user_id)
-        embed = discord.Embed(
+        linky_embed = discord.Embed(
             color=admin.color if admin else discord.Color.green()
         )
-        embed.set_author(
+        linky_embed.set_author(
             name=f'{admin.name if admin else "Drew LinkyBot"} says:',
             icon_url=admin.display_avatar.url if admin else url_bank.linky_icon,
         )
 
         if query.strip().lower() == 'state laws':
-            embed.description = self.laws if self.laws else f"I'm afraid I can't do that, {interaction.user.name}."
-            await interaction.response.send_message(embed=embed)
-            return
+            linky_embed.description = self.laws if self.laws else f"I'm afraid I can't do that, {interaction.user.name}."
+        elif self.linky_rhg:
+            linky_embed.set_image(url=url_bank.linky_rare)
+        else:
+            linky_embed.description = self.fetch_random_message()
 
-        if self.linky_rhg:
-            embed.set_image(url=url_bank.linky_rare)
-            await interaction.response.send_message(embed=embed)
-            return
+        embeds.append(linky_embed)
 
-        message = self.fetch_random_message()
-        embed.description = message
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(
+            embeds=embeds,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
 async def setup(bot: DiscordBot) -> None:
     await bot.add_cog(Linky(bot))
