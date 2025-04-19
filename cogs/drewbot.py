@@ -68,8 +68,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         author_is_patron = any(
             role.id in self.patron_role_ids for role in getattr(message.author, "roles", [])
         )
-        author_is_mod = message.author.guild_permissions.manage_roles
-        if not author_is_patron and not author_is_mod:
+        if not author_is_patron:
             return
 
         key = (message.channel.id, message.reference.message_id)
@@ -252,8 +251,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         A footer is appended on a new line using the "-# " syntax.
         """
         user_is_patron = any(user_has_role(interaction, role) for role in self.patron_role_ids)
-        user_is_mod = interaction.user.guild_permissions.manage_roles
-        if not user_is_patron and not user_is_mod:
+        if not user_is_patron:
             await interaction.response.send_message(
                 "D--> You must have the Patron role to use this command.",
                 ephemeral=True,
