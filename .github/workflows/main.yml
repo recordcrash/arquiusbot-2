@@ -41,8 +41,12 @@ jobs:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: CORE_CHANGED,DEPS_CHANGED
           script: |
             set -euo pipefail
+            CORE_CHANGED="${CORE_CHANGED:-false}"  # ← default if somehow unset
+            DEPS_CHANGED="${DEPS_CHANGED:-false}"
+
             cd /home/makin/arquiusbot-2
             git pull origin master
 
