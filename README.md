@@ -1,6 +1,6 @@
 # ARQuiusbot
 
-![Deploy Status](https://github.com/recordcrash/arquiusbot-2/actions/workflows/main.yml/badge.svg?branch=master)
+[![Deploy ArquiusBot](https://github.com/recordcrash/arquiusbot-2/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/recordcrash/arquiusbot-2/actions/workflows/main.yml)
 
 **ARQuiusbot** is a modern multi-feature Discord bot. It handles moderation, role management, logging, random text generation, and more. The code is split across multiple cogs.
 
