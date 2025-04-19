@@ -5,34 +5,59 @@ on:
     branches:
       - master
 
+# Detect whether the push touched core‑restart files or dependency files
 jobs:
-  deploy:
-    name: Deploy to server
+  detect-changes:
     runs-on: ubuntu-latest
-
+    outputs:
+      core_changed: ${{ steps.filter.outputs.core }}
+      deps_changed: ${{ steps.filter.outputs.deps }}
     steps:
       - uses: actions/checkout@v4
-      - uses: appleboy/ssh-action@v1.0.0
+      - id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          base: ${{ github.event.before }}
+          filters: |
+            core:
+              - 'bot.py'
+              - 'classes/discordbot.py'
+            deps:
+              - 'pyproject.toml'
+              - 'uv.lock'
+
+  deploy:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          CORE_CHANGED: ${{ needs.detect-changes.outputs.core_changed }}
+          DEPS_CHANGED: ${{ needs.detect-changes.outputs.deps_changed }}
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -euo pipefail
             cd /home/makin/arquiusbot-2
             git pull origin master
 
-            mkdir -p config
-
-            cat <<EOF > config/bot.json
+            cat > config/bot.json <<'EOF'
             ${{ secrets.BOT_JSON }}
             EOF
-
-            cat <<EOF > config/cogs.json
+            cat > config/cogs.json <<'EOF'
             ${{ secrets.COGS_JSON }}
             EOF
 
-            chmod 600 config/*.json
+            if [ "$DEPS_CHANGED" = "true" ]; then
+              uv sync --all-extras
+            fi
 
-            uv sync --all-extras
-
-            sudo systemctl restart arquiusbot.service
+            # Restart only if core logic or dependencies changed
+            if [ "$CORE_CHANGED" = "true" ] || [ "$DEPS_CHANGED" = "true" ]; then
+              sudo systemctl restart arquiusbot.service
+            fi

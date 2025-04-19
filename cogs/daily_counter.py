@@ -180,7 +180,7 @@ class DailyCounter(commands.Cog, name="daily_counter"):
 
         admin_mention = f'<@{self.subconfig_data["ping_user_id"]}>'
         embed = self.create_embed()
-        await log_channel.send(admin_mention, embed=embed)
+        await log_channel.send(embed=embed)
         await interaction.response.send_message("Daily report posted.", ephemeral=True)
 
     @force_daily_post.error
