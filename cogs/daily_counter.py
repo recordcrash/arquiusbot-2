@@ -78,6 +78,10 @@ class DailyCounter(commands.Cog, name="daily_counter"):
                         line += "\n" + "\n".join(thread_lines)
             lines.append(line)
 
+        total_messages = sum(channel_totals.values())
+        if total_messages:
+            lines.append(f"`All channels`: **{total_messages}**")
+
         msg_counts = "\n".join(lines) if lines else "No messages recorded."
         embed = self.bot.create_embed(
             color=discord.Color.blue(),
@@ -85,6 +89,8 @@ class DailyCounter(commands.Cog, name="daily_counter"):
             timestamp=now,
         )
         embed.set_author(name="Daily Report", icon_url=self.bot.user.display_avatar.url)
+        embed.add_field(name="Total Messages:", value=str(total_messages))
+        embed.add_field(name="Current Users:", value=str(guild.member_count))
         embed.add_field(name="Users Gained:", value=self.daily_usr.get("join", 0))
         embed.add_field(
             name="Users Lost:",
