@@ -49,21 +49,19 @@ class DailyCounter(commands.Cog, name="daily_counter"):
         """
         guild = self.bot.get_current_guild()
 
-        # Get the current UTC time and compute last midnight in UTC.
         now = datetime.now(timezone.utc)
-        last_midnight = datetime.combine(
-            now.date(), datetime.min.time(), tzinfo=timezone.utc
-        )
-
+        last_midnight = datetime.combine(now.date(), datetime.min.time(), tzinfo=timezone.utc)
         if self.bot.uptime > last_midnight:
-            header_text = (
-                f"since bot restart ({discord.utils.format_dt(self.bot.uptime, 'R')})"
-            )
+            header_text = f"since bot restart ({discord.utils.format_dt(self.bot.uptime, 'R')})"
         else:
             header_text = f"since {discord.utils.format_dt(last_midnight, 'F')}"
 
-        lines = []
-        for chan_id, count in self.global_msg.most_common():
+        channel_totals: dict[int, int] = dict(self.global_msg)
+        for parent_id, threads in self.thread_msg.items():
+            channel_totals[parent_id] = channel_totals.get(parent_id, 0) + sum(threads.values())
+
+        lines: list[str] = []
+        for chan_id, count in sorted(channel_totals.items(), key=lambda t: t[1], reverse=True):
             channel = guild.get_channel(chan_id)
             if not channel:
                 line = f"`{chan_id}`: **{count}** (channel removed)"
