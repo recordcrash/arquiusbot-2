@@ -55,18 +55,27 @@ class Database:
 
     def add_scheduled_ban(self, unban_time: datetime, member_id: int, role_id: int) -> int:
         """
-        Inserts a new scheduled ban into the database.
-        Returns the ID of the newly inserted row.
+        Adds (or replaces) a scheduled ban.
 
-        The unban_time is converted to UTC and stored as a naive ISO-formatted string.
+        • Any existing row for *member_id + role_id* is deleted first, so each user/role
+          pair can appear only once in the table.
+        • Returns the primary‑key ID of the new row.
         """
-        # Convert unban_time to UTC, remove tzinfo, and store as ISO string.
         unban_str = unban_time.astimezone(timezone.utc).replace(tzinfo=None).isoformat()
+
         with self.get_connection() as conn:
             cur = conn.cursor()
+
+            # one‑row‑per‑user/role policy
+            cur.execute(
+                "DELETE FROM scheduled_bans WHERE member_id = ? AND role_id = ?",
+                (member_id, role_id),
+            )
+
+            # add the fresh ban
             cur.execute(
                 "INSERT INTO scheduled_bans (unban_time, member_id, role_id) VALUES (?, ?, ?)",
-                (unban_str, member_id, role_id)
+                (unban_str, member_id, role_id),
             )
             conn.commit()
             return cur.lastrowid
