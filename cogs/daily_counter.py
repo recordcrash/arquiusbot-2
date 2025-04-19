@@ -27,6 +27,7 @@ class DailyCounter(commands.Cog, name="daily_counter"):
         self.global_msg: Counter = Counter()
         self.thread_msg: defaultdict = defaultdict(Counter)  # {parent_channel_id: Counter({thread_id: msg_count})}
         self.daily_usr: Counter = Counter({'join': 0, 'leave': 0, 'ban': 0})
+        self.count_start: datetime = datetime.now(timezone.utc)
 
     def cog_unload(self) -> None:
         """Stops the daily summary loop when the cog is unloaded."""
@@ -51,8 +52,8 @@ class DailyCounter(commands.Cog, name="daily_counter"):
 
         now = datetime.now(timezone.utc)
         last_midnight = datetime.combine(now.date(), datetime.min.time(), tzinfo=timezone.utc)
-        if self.bot.uptime > last_midnight:
-            header_text = f"since bot restart ({discord.utils.format_dt(self.bot.uptime, 'R')})"
+        if self.count_start > last_midnight:
+            header_text = f"since restart ({discord.utils.format_dt(self.count_start, 'R')})"
         else:
             header_text = f"since {discord.utils.format_dt(last_midnight, 'F')}"
 
@@ -69,7 +70,7 @@ class DailyCounter(commands.Cog, name="daily_counter"):
                 line = f"`{channel}`: **{count}**"
                 if chan_id in self.thread_msg:
                     thread_lines = [
-                        f"    - `{self._get_thread_name(guild, thread_id)}`: **{tcount}**"
+                        f"    • `{self._get_thread_name(guild, thread_id)}`: **{tcount}**"
                         for thread_id, tcount in self.thread_msg[chan_id].most_common()
                         if guild.get_thread(thread_id)
                     ]
