@@ -48,32 +48,31 @@ class BanManager(commands.Cog, name="ban_manager"):
             # Count number of channels where this role explicitly denies a given permission
             count = 0
             for ch in guild.channels:
-                ov = ch.overwrites_for(role)
-                deny_perms = ov.pair()[1]
+                deny_perms = ch.overwrites_for(role).pair()[1]
                 if getattr(deny_perms, deny_attr, False):
                     count += 1
             return count
 
         for ch in guild.text_channels:
-            # Roles that deny send_messages in this channel
-            ban_roles = [
-                r for r in guild.roles
-                if ch.overwrites_for(r).pair()[1].send_messages
-            ]
-            if ban_roles:
-                best = min(ban_roles, key=lambda r: breadth(r, 'send_messages'))
-                self.channel_ban_map[ch.id] = best
-
-            # Roles that deny send_messages_in_threads but allow send_messages
+            # 1. Find all thread-only ban roles (deny threads but allow channel)
             thread_roles = [
                 r for r in guild.roles
                 if ch.overwrites_for(r).pair()[1].send_messages_in_threads
                    and not ch.overwrites_for(r).pair()[1].send_messages
             ]
             if thread_roles:
-                best_thread = min(thread_roles,
-                                  key=lambda r: breadth(r, 'send_messages_in_threads'))
+                best_thread = min(thread_roles, key=lambda r: breadth(r, 'send_messages_in_threads'))
                 self.thread_ban_map[ch.id] = best_thread
+
+            # 2. Find all channel-ban roles (deny channel messages) but skip thread-only roles
+            ban_roles = [
+                r for r in guild.roles
+                if r not in thread_roles
+                   and ch.overwrites_for(r).pair()[1].send_messages
+            ]
+            if ban_roles:
+                best = min(ban_roles, key=lambda r: breadth(r, 'send_messages'))
+                self.channel_ban_map[ch.id] = best
 
         print(f"Channel ban map: {self.channel_ban_map}")
         print(f"Thread ban map: {self.thread_ban_map}")
