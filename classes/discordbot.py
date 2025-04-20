@@ -179,7 +179,7 @@ class DiscordBot(commands.Bot):
             prefix = self.config["bot"]["default_prefix"]
         return commands.when_mentioned_or(prefix)(client, message)
 
-    @watch(path='../cogs', preload=True, debug=False)
+    @watch(path='cogs', preload=True, debug=False)
     async def on_ready(self) -> None:
         self.log( message = f"Logged as: {self.user} | discord.py{discord_version} Guilds: {len(self.guilds)} Users: {len(self.users)} Config: {len(self.config)}", name = "discord.on_ready")
 
