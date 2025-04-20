@@ -83,8 +83,17 @@ class BanManager(commands.Cog, name="ban_manager"):
                 self.channel_ban_map[ch.id] = best
 
         # TODO: remove
-        print(f"Channel ban map: {self.channel_ban_map}")
-        print(f"Thread ban map: {self.thread_ban_map}")
+        channel_map_readable = {
+            (guild.get_channel(cid).name if guild.get_channel(cid) else str(cid)): role.name
+            for cid, role in self.channel_ban_map.items()
+        }
+        thread_map_readable = {
+            (guild.get_channel(cid).name if guild.get_channel(cid) else str(cid)): role.name
+            for cid, role in self.thread_ban_map.items()
+        }
+
+        print("Channel ban map:", channel_map_readable)
+        print("Thread ban map:", thread_map_readable)
 
     def cog_unload(self) -> None:
         self.manage_mutelist.cancel()
