@@ -1,6 +1,4 @@
-import asyncio
-from collections import deque
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from logging import INFO as LOG_INFO
 from logging import Logger, Formatter
 from typing import List, TypeVar
@@ -8,6 +6,8 @@ from typing import List, TypeVar
 from discord import AppInfo, Message, Color, Embed, Guild, app_commands, Interaction, Thread
 from discord import __version__ as discord_version
 from discord.ext import commands
+
+from cogwatch import watch
 
 from classes.database import Database
 
@@ -179,6 +179,7 @@ class DiscordBot(commands.Bot):
             prefix = self.config["bot"]["default_prefix"]
         return commands.when_mentioned_or(prefix)(client, message)
 
+    @watch(path='../cogs', preload=True, debug=False)
     async def on_ready(self) -> None:
         self.log( message = f"Logged as: {self.user} | discord.py{discord_version} Guilds: {len(self.guilds)} Users: {len(self.users)} Config: {len(self.config)}", name = "discord.on_ready")
 
