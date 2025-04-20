@@ -30,7 +30,15 @@ class BanManager(commands.Cog, name="ban_manager"):
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
+        if not self.channel_ban_map:
+            await self._build_ban_maps()
+
+    @commands.command(name="rebuild_ban_maps")
+    @commands.is_owner()
+    async def rebuild_ban_maps(self, ctx: commands.Context) -> None:
+        """Manually rebuilds ban maps. TODO: remove this after testing."""
         await self._build_ban_maps()
+        await ctx.send(f":thumbsup: Ban maps regenerated!")
 
     async def _build_ban_maps(self) -> None:
         """Scan all channels to choose the narrowest ban and thread-ban roles."""
