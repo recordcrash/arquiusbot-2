@@ -22,8 +22,54 @@ class BanManager(commands.Cog, name="ban_manager"):
 
     def __init__(self, bot: DiscordBot) -> None:
         self.bot = bot
+        # In-memory maps: channel -> best ban role, and channel -> best thread-only ban role
+        self.channel_ban_map: dict[int, discord.Role] = {}
+        self.thread_ban_map: dict[int, discord.Role] = {}
         self.bot.log(message=response_bank.process_mutelist, name="BanManager.__init__")
         self.manage_mutelist.start()
+
+    @commands.Cog.listener()
+    async def on_ready(self) -> None:
+        if not self.channel_ban_map:
+            await self._build_ban_maps()
+
+    async def _build_ban_maps(self) -> None:
+        """Scan all channels to choose the narrowest ban and thread-ban roles."""
+        guild = self.bot.get_current_guild()
+
+        def breadth(role: discord.Role, deny_attr: str) -> int:
+            # Count number of channels where this role explicitly denies a given permission
+            count = 0
+            for ch in guild.channels:
+                ov = ch.overwrites_for(role)
+                deny_perms = ov.pair()[1]
+                if getattr(deny_perms, deny_attr, False):
+                    count += 1
+            return count
+
+        for ch in guild.text_channels:
+            # Roles that deny send_messages in this channel
+            ban_roles = [
+                r for r in guild.roles
+                if ch.overwrites_for(r).pair()[1].send_messages
+            ]
+            if ban_roles:
+                best = min(ban_roles, key=lambda r: breadth(r, 'send_messages'))
+                self.channel_ban_map[ch.id] = best
+
+            # Roles that deny send_messages_in_threads but allow send_messages
+            thread_roles = [
+                r for r in guild.roles
+                if ch.overwrites_for(r).pair()[1].send_messages_in_threads
+                   and not ch.overwrites_for(r).pair()[1].send_messages
+            ]
+            if thread_roles:
+                best_thread = min(thread_roles,
+                                  key=lambda r: breadth(r, 'send_messages_in_threads'))
+                self.thread_ban_map[ch.id] = best_thread
+
+        print(f"Channel ban map: {self.channel_ban_map}")
+        print(f"Thread ban map: {self.thread_ban_map}")
 
     def cog_unload(self) -> None:
         self.manage_mutelist.cancel()
@@ -50,7 +96,7 @@ class BanManager(commands.Cog, name="ban_manager"):
         hours = number * _unit_dict[unit]
 
         if hours > _MAX_BAN_HOURS:
-            raise ValueError(f"Duration too long: max is 100 years.")
+            raise ValueError("Duration too long: max is 100 years.")
         return hours
 
     async def _log_mod(self, embed: discord.Embed) -> None:
@@ -73,7 +119,6 @@ class BanManager(commands.Cog, name="ban_manager"):
             role = guild.get_role(role_id)
 
             if not member or not role:
-                # Optionally log missing members or roles.
                 continue
 
             try:
@@ -98,7 +143,7 @@ class BanManager(commands.Cog, name="ban_manager"):
 
     @manage_mutelist.before_loop
     async def prepare_mutelist(self) -> None:
-        """Waits for bot readiness before starting the loop."""
+        """Waits for bot readiness before starting the unban loop."""
         await self.bot.wait_until_ready()
         self.bot.log(message=response_bank.process_mutelist_complete, name="BanManager.prepare_mutelist")
 
@@ -113,15 +158,14 @@ class BanManager(commands.Cog, name="ban_manager"):
     @channel.command(name="ban", description="Temporarily ban a user in the channel.")
     @app_commands.default_permissions(manage_roles=True)
     async def ban(
-            self,
-            interaction: discord.Interaction,
-            member: discord.Member,
-            length: str,
-            reason: str = "None specified.",
-            memeban: bool = False,
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        length: str,
+        reason: str = "None specified.",
+        memeban: bool = False,
     ) -> None:
         """Applies a channel ban role to a user for a specified duration."""
-        # Defer the interaction immediately.
         await interaction.response.defer()
         try:
             duration = self._parse_length(length)
@@ -129,7 +173,9 @@ class BanManager(commands.Cog, name="ban_manager"):
             if memeban:
                 duration = None
             else:
-                await interaction.followup.send(response_bank.channel_ban_duration_error.format(length=length), ephemeral=True)
+                await interaction.followup.send(
+                    response_bank.channel_ban_duration_error.format(length=length), ephemeral=True
+                )
                 return
 
         if memeban:
@@ -145,17 +191,15 @@ class BanManager(commands.Cog, name="ban_manager"):
             await interaction.followup.send('<:professionalism:1350770886243909702>', ephemeral=True)
             return
 
-        # Determine the channel to use for permission overwrites.
+        # Determine the correct ban role from pre-built maps
         if isinstance(interaction.channel, discord.Thread):
-            target_channel = interaction.channel.parent
+            parent = interaction.channel.parent
+            # prefer thread-specific ban, fallback to full ban
+            channel_ban_role = self.thread_ban_map.get(parent.id) or self.channel_ban_map.get(parent.id)
         else:
-            target_channel = interaction.channel
+            parent = interaction.channel
+            channel_ban_role = self.channel_ban_map.get(interaction.channel.id)
 
-        # Find the first ban role available in the channel.
-        channel_ban_role = next(
-            (role for role in interaction.guild.roles if target_channel.overwrites_for(role).pair()[1].send_messages),
-            None
-        )
         if not channel_ban_role:
             await interaction.followup.send(response_bank.channel_ban_role_error, ephemeral=True)
             return
@@ -163,7 +207,9 @@ class BanManager(commands.Cog, name="ban_manager"):
         try:
             await member.add_roles(channel_ban_role, reason=f'Channel ban: {reason}')
         except discord.Forbidden:
-            await interaction.followup.send(f"Error: Could not apply ban role to {member.mention}.", ephemeral=True)
+            await interaction.followup.send(
+                f"Error: Could not apply ban role to {member.mention}.", ephemeral=True
+            )
             return
 
         unban_time = datetime.now(timezone.utc) + timedelta(hours=duration) if duration else None
@@ -176,7 +222,7 @@ class BanManager(commands.Cog, name="ban_manager"):
         embed = discord.Embed(
             color=discord.Color.red(),
             timestamp=datetime.now(timezone.utc),
-            description=f'{member.mention} has been banned in **#{target_channel}**'
+            description=f'{member.mention} has been banned in **#{parent}**'
         )
         embed.add_field(name='Duration:', value=f'{duration} hour(s)' if duration else "Until further notice")
         embed.add_field(name='Reason:', value=reason)
@@ -196,14 +242,15 @@ class BanManager(commands.Cog, name="ban_manager"):
             await interaction.followup.send('<:professionalism:1350770886243909702>', ephemeral=True)
             return
 
-        # Determine the channel to use for permission overwrites.
         if isinstance(interaction.channel, discord.Thread):
-            target_channel = interaction.channel.parent
+            parent = interaction.channel.parent
         else:
-            target_channel = interaction.channel
+            parent = interaction.channel
 
+        # find which role we applied
         channel_ban_role = next(
-            (role for role in member.roles if target_channel.overwrites_for(role).pair()[1].send_messages),
+            (role for role in member.roles
+             if parent.overwrites_for(role).pair()[1].send_messages),
             None
         )
         if not channel_ban_role:
@@ -223,7 +270,7 @@ class BanManager(commands.Cog, name="ban_manager"):
         embed = discord.Embed(
             color=discord.Color.green(),
             timestamp=datetime.now(timezone.utc),
-            description=f'{member.mention} has been unbanned in **#{target_channel}**'
+            description=f'{member.mention} has been unbanned in **#{parent}**'
         )
         embed.add_field(name='Reason:', value=reason or 'None specified.')
         embed.add_field(name='User ID:', value=str(member.id))
@@ -249,21 +296,16 @@ class BanManager(commands.Cog, name="ban_manager"):
             await interaction.followup.send(response_bank.no_active_channel_bans, ephemeral=True)
             return
 
-        # Safely unpack ban data (it can easily fail due to too-future dates)
         lines = []
         for ban in active_bans:
             try:
                 ban_id, unban_str, member_id, role_id = ban
-            except Exception as e:
+            except ValueError:
                 continue
             try:
                 unban_time = datetime.fromisoformat(unban_str)
-                try:
-                    # Use discord.utils.format_dt to get a relative timestamp.
-                    remaining = discord.utils.format_dt(unban_time, style="R")
-                except (OverflowError, OSError, ValueError):
-                    remaining = "in the far future"
-            except Exception as e:
+                remaining = discord.utils.format_dt(unban_time, style="R")
+            except Exception:
                 remaining = "N/A"
 
             member = interaction.guild.get_member(member_id)
