@@ -58,7 +58,7 @@ jobs:
             EOF
 
             if [ "$DEPS_CHANGED" = "true" ]; then
-              uv sync --all-extras
+              /home/makin/.local/bin/uv sync --all-extras
             fi
 
             # Restart only if core logic or dependencies changed
