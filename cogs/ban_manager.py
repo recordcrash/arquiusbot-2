@@ -43,6 +43,8 @@ class BanManager(commands.Cog, name="ban_manager"):
     async def _build_ban_maps(self) -> None:
         """Scan all channels to choose the narrowest ban and thread-ban roles."""
         guild = self.bot.get_current_guild()
+        self.channel_ban_map = {}
+        self.thread_ban_map = {}
 
         def breadth(role: discord.Role, deny_attr: str) -> int:
             # Count number of channels where this role explicitly denies a given permission
@@ -54,26 +56,33 @@ class BanManager(commands.Cog, name="ban_manager"):
             return count
 
         for ch in guild.text_channels:
-            # 1. Find all thread-only ban roles (deny threads but allow channel)
+            # 1. Thread-only ban roles: name contains "ban", denies threads but allows channel
             thread_roles = [
                 r for r in guild.roles
-                if ch.overwrites_for(r).pair()[1].send_messages_in_threads
+                if "ban" in r.name.lower()
+                   and ch.overwrites_for(r).pair()[1].send_messages_in_threads
                    and not ch.overwrites_for(r).pair()[1].send_messages
             ]
             if thread_roles:
-                best_thread = min(thread_roles, key=lambda r: breadth(r, 'send_messages_in_threads'))
+                best_thread = min(thread_roles,
+                                  key=lambda r: breadth(r, 'send_messages_in_threads'))
                 self.thread_ban_map[ch.id] = best_thread
 
-            # 2. Find all channel-ban roles (deny channel messages) but skip thread-only roles
+            # 2. Channel-ban roles: name contains "ban", denies channel messages, skip thread-only
             ban_roles = [
                 r for r in guild.roles
-                if r not in thread_roles
+                if "ban" in r.name.lower()
+                   and r not in thread_roles
                    and ch.overwrites_for(r).pair()[1].send_messages
             ]
             if ban_roles:
-                best = min(ban_roles, key=lambda r: breadth(r, 'send_messages'))
+                best = min(
+                    ban_roles,
+                    key=lambda r: (breadth(r, 'send_messages'), -r.position)
+                )
                 self.channel_ban_map[ch.id] = best
 
+        # TODO: remove
         print(f"Channel ban map: {self.channel_ban_map}")
         print(f"Thread ban map: {self.thread_ban_map}")
 
