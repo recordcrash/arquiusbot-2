@@ -89,11 +89,6 @@ class Misc(commands.Cog, name="misc"):
         sign = sign or ''
         mod = mod or ''
 
-        self.bot.log(
-            message=f"D--> Rolling dice: {args}, {ndice}d{nfaces}{sign}{mod}",
-            name="Misc.dice_roller",
-        )
-
         if ndice <= 0 or nfaces <= 0:
             await interaction.response.send_message(
                 "D--> That doesn't math very well. I STRONGLY suggest you try again.", ephemeral=True)
