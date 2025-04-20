@@ -36,7 +36,7 @@ class BanManager(commands.Cog, name="ban_manager"):
     @commands.command(name="rebuild_ban_maps")
     @commands.is_owner()
     async def rebuild_ban_maps(self, ctx: commands.Context) -> None:
-        """Manually rebuilds ban maps. TODO: remove this after testing."""
+        """Manually rebuilds ban maps. Non-slash command."""
         await self._build_ban_maps()
         await ctx.send(f":thumbsup: Ban maps regenerated!")
 
@@ -81,19 +81,6 @@ class BanManager(commands.Cog, name="ban_manager"):
                     key=lambda r: (breadth(r, 'send_messages'), -r.position)
                 )
                 self.channel_ban_map[ch.id] = best
-
-        # TODO: remove
-        channel_map_readable = {
-            (guild.get_channel(cid).name if guild.get_channel(cid) else str(cid)): role.name
-            for cid, role in self.channel_ban_map.items()
-        }
-        thread_map_readable = {
-            (guild.get_channel(cid).name if guild.get_channel(cid) else str(cid)): role.name
-            for cid, role in self.thread_ban_map.items()
-        }
-
-        print("Channel ban map:", channel_map_readable)
-        print("Thread ban map:", thread_map_readable)
 
     def cog_unload(self) -> None:
         self.manage_mutelist.cancel()
