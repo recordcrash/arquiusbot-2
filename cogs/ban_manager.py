@@ -30,8 +30,7 @@ class BanManager(commands.Cog, name="ban_manager"):
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
-        if not self.channel_ban_map:
-            await self._build_ban_maps()
+        await self._build_ban_maps()
 
     @commands.command(name="rebuild_ban_maps")
     @commands.is_owner()
