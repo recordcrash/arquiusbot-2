@@ -194,9 +194,7 @@ class EventListeners(commands.Cog, name="events"):
         after_val, after_file = self._maybe_attach_content(after_text, prefix="after")
         embed.add_field(name="After", value=after_val, inline=False)
 
-        embed.set_footer(
-            text=f"User ID: {before.author.id} • {format_dt(now, style='f')}"
-        )
+        embed.set_footer(text=f"User ID: {before.author.id}")
 
         files = []
         if before_file:
@@ -233,10 +231,7 @@ class EventListeners(commands.Cog, name="events"):
         embed.add_field(name="Content", value=content_val, inline=False)
 
         embed.set_footer(
-            text=(
-                f"Author ID: {message.author.id} | Message ID: {message.id} • "
-                f"{format_dt(now, style='f')}"
-            )
+            text=f"Author ID: {message.author.id} | Message ID: {message.id}"
         )
 
         await ch.send(embed=embed, files=[content_file] if content_file else None)
