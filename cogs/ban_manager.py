@@ -29,7 +29,13 @@ class BanManager(commands.Cog, name="ban_manager"):
         self.manage_mutelist.start()
 
     @commands.Cog.listener()
-    async def on_ready(self) -> None:
+    async def on_ready(self):
+        # Only initial build; guard against partial cache
+        await self._build_ban_maps()
+
+    @commands.Cog.listener()
+    async def on_resumed(self):
+        # Always rebuild after a resume
         await self._build_ban_maps()
 
     @commands.command(name="rebuild_ban_maps")
@@ -42,6 +48,10 @@ class BanManager(commands.Cog, name="ban_manager"):
     async def _build_ban_maps(self) -> None:
         """Scan all channels to choose the narrowest ban and thread-ban roles."""
         guild = self.bot.get_current_guild()
+        if not guild or not guild.channels:
+            self.bot.log(message="BanManager: _build_ban_maps called with no guild or empty channels",
+                         name="BanManager")
+            return
         self.channel_ban_map = {}
         self.thread_ban_map = {}
 
@@ -80,6 +90,8 @@ class BanManager(commands.Cog, name="ban_manager"):
                     key=lambda r: (breadth(r, 'send_messages'), -r.position)
                 )
                 self.channel_ban_map[ch.id] = best
+
+        self.bot.log(message="BanManager: Ban Maps rebuilt.",name="BanManager")
 
     def cog_unload(self) -> None:
         self.manage_mutelist.cancel()
