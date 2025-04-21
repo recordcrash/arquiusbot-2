@@ -11,7 +11,7 @@ from classes.response_bank import response_bank
 
 # Multipliers to convert durations to hours.
 # 'm' is interpreted as month (732 hours), while 'min' represents one minute (1/60 hours).
-_unit_dict = {'h': 1, 'd': 24, 'w': 168, 'm': 732, 'y': 8766, 'min': 1 / 60}
+_unit_dict = {"h": 1, "d": 24, "w": 168, "m": 732, "y": 8766, "min": 1 / 60}
 
 # Upper bound: 100 years  (100 × 8 766 h)
 _MAX_BAN_HOURS = 8_766 * 100
@@ -54,8 +54,10 @@ class BanManager(commands.Cog, name="ban_manager"):
         """Scan all channels to choose the narrowest ban and thread-ban roles."""
         guild = self.bot.get_current_guild()
         if not guild or not guild.channels:
-            self.bot.log(message="BanManager: _build_ban_maps called with no guild or empty channels",
-                         name="BanManager")
+            self.bot.log(
+                message="BanManager: _build_ban_maps called with no guild or empty channels",
+                name="BanManager",
+            )
             return
         self.channel_ban_map = {}
         self.thread_ban_map = {}
@@ -72,31 +74,33 @@ class BanManager(commands.Cog, name="ban_manager"):
         for ch in guild.text_channels:
             # 1. Thread-only ban roles: name contains "ban", denies threads but allows channel
             thread_roles = [
-                r for r in guild.roles
+                r
+                for r in guild.roles
                 if "ban" in r.name.lower()
-                   and ch.overwrites_for(r).pair()[1].send_messages_in_threads
-                   and not ch.overwrites_for(r).pair()[1].send_messages
+                and ch.overwrites_for(r).pair()[1].send_messages_in_threads
+                and not ch.overwrites_for(r).pair()[1].send_messages
             ]
             if thread_roles:
-                best_thread = min(thread_roles,
-                                  key=lambda r: breadth(r, 'send_messages_in_threads'))
+                best_thread = min(
+                    thread_roles, key=lambda r: breadth(r, "send_messages_in_threads")
+                )
                 self.thread_ban_map[ch.id] = best_thread
 
             # 2. Channel-ban roles: name contains "ban", denies channel messages, skip thread-only
             ban_roles = [
-                r for r in guild.roles
+                r
+                for r in guild.roles
                 if "ban" in r.name.lower()
-                   and r not in thread_roles
-                   and ch.overwrites_for(r).pair()[1].send_messages
+                and r not in thread_roles
+                and ch.overwrites_for(r).pair()[1].send_messages
             ]
             if ban_roles:
                 best = min(
-                    ban_roles,
-                    key=lambda r: (breadth(r, 'send_messages'), -r.position)
+                    ban_roles, key=lambda r: (breadth(r, "send_messages"), -r.position)
                 )
                 self.channel_ban_map[ch.id] = best
 
-        self.bot.log(message="BanManager: Ban Maps rebuilt.",name="BanManager")
+        self.bot.log(message="BanManager: Ban Maps rebuilt.", name="BanManager")
 
     def cog_unload(self) -> None:
         self.manage_mutelist.cancel()
@@ -153,17 +157,22 @@ class BanManager(commands.Cog, name="ban_manager"):
             except discord.Forbidden:
                 embed = discord.Embed(
                     color=discord.Color.red(),
-                    description=response_bank.manage_mutelist_unban_error.format(member=member, role=role),
+                    description=response_bank.manage_mutelist_unban_error.format(
+                        member=member, role=role
+                    ),
                 )
                 await self._log_mod(embed)
             else:
                 embed = discord.Embed(
                     color=discord.Color.green(),
                     timestamp=now,
-                    description=f'{member.mention} reached timeout for **{role}**.'
+                    description=f"{member.mention} reached timeout for **{role}**.",
                 )
-                embed.add_field(name='User ID:', value=str(member.id))
-                embed.set_author(name=f'{self.bot.user} undid Channel Ban:', icon_url=self.bot.user.display_avatar.url)
+                embed.add_field(name="User ID:", value=str(member.id))
+                embed.set_author(
+                    name=f"{self.bot.user} undid Channel Ban:",
+                    icon_url=self.bot.user.display_avatar.url,
+                )
                 await self._log_mod(embed)
 
             self.bot.db.delete_scheduled_ban(ban_id)
@@ -172,7 +181,10 @@ class BanManager(commands.Cog, name="ban_manager"):
     async def prepare_mutelist(self) -> None:
         """Waits for bot readiness before starting the unban loop."""
         await self.bot.wait_until_ready()
-        self.bot.log(message=response_bank.process_mutelist_complete, name="BanManager.prepare_mutelist")
+        self.bot.log(
+            message=response_bank.process_mutelist_complete,
+            name="BanManager.prepare_mutelist",
+        )
 
     # Define a slash-only command group for channel bans.
     channel = app_commands.Group(
@@ -202,12 +214,15 @@ class BanManager(commands.Cog, name="ban_manager"):
                 duration = None
             else:
                 await interaction.followup.send(
-                    response_bank.channel_ban_duration_error.format(length=length), ephemeral=True
+                    response_bank.channel_ban_duration_error.format(length=length),
+                    ephemeral=True,
                 )
                 return
 
         if memeban:
-            lenstr = "Until further notice." if duration is None else f"{duration} hour(s)."
+            lenstr = (
+                "Until further notice." if duration is None else f"{duration} hour(s)."
+            )
             await interaction.followup.send(
                 response_bank.channel_ban_confirm.format(
                     member=member.mention, until=lenstr, reason=reason
@@ -216,31 +231,39 @@ class BanManager(commands.Cog, name="ban_manager"):
             return
 
         if member.id == self.bot.user.id:
-            await interaction.followup.send('<:professionalism:1350770886243909702>', ephemeral=True)
+            await interaction.followup.send(
+                "<:professionalism:1350770886243909702>", ephemeral=True
+            )
             return
 
         # Determine the correct ban role from pre-built maps
         if isinstance(interaction.channel, discord.Thread):
             parent = interaction.channel.parent
             # prefer thread-specific ban, fallback to full ban
-            channel_ban_role = self.thread_ban_map.get(parent.id) or self.channel_ban_map.get(parent.id)
+            channel_ban_role = self.thread_ban_map.get(
+                parent.id
+            ) or self.channel_ban_map.get(parent.id)
         else:
             parent = interaction.channel
             channel_ban_role = self.channel_ban_map.get(interaction.channel.id)
 
         if not channel_ban_role:
-            await interaction.followup.send(response_bank.channel_ban_role_error, ephemeral=True)
+            await interaction.followup.send(
+                response_bank.channel_ban_role_error, ephemeral=True
+            )
             return
 
         try:
-            await member.add_roles(channel_ban_role, reason=f'Channel ban: {reason}')
+            await member.add_roles(channel_ban_role, reason=f"Channel ban: {reason}")
         except discord.Forbidden:
             await interaction.followup.send(
                 f"Error: Could not apply ban role to {member.mention}.", ephemeral=True
             )
             return
 
-        unban_time = datetime.now(timezone.utc) + timedelta(hours=duration) if duration else None
+        unban_time = (
+            datetime.now(timezone.utc) + timedelta(hours=duration) if duration else None
+        )
         if unban_time:
             relative_unban = f"<t:{int(unban_time.timestamp())}:R>"
             self.bot.db.add_scheduled_ban(unban_time, member.id, channel_ban_role.id)
@@ -250,24 +273,36 @@ class BanManager(commands.Cog, name="ban_manager"):
         embed = discord.Embed(
             color=discord.Color.red(),
             timestamp=datetime.now(timezone.utc),
-            description=f'{member.mention} has been banned in **#{parent}**'
+            description=f"{member.mention} has been banned in **#{parent}**",
         )
-        embed.add_field(name='Duration:', value=f'{duration} hour(s)' if duration else "Until further notice")
-        embed.add_field(name='Reason:', value=reason)
-        embed.add_field(name='User ID:', value=str(member.id))
-        embed.set_author(name=f'{interaction.user} issued channel ban:', icon_url=interaction.user.display_avatar.url)
+        embed.add_field(
+            name="Duration:",
+            value=f"{duration} hour(s)" if duration else "Until further notice",
+        )
+        embed.add_field(name="Reason:", value=reason)
+        embed.add_field(name="User ID:", value=str(member.id))
+        embed.set_author(
+            name=f"{interaction.user} issued channel ban:",
+            icon_url=interaction.user.display_avatar.url,
+        )
 
         await self._log_mod(embed)
         await interaction.followup.send(
-            response_bank.channel_ban_confirm.format(member=member.mention, until=relative_unban, reason=reason)
+            response_bank.channel_ban_confirm.format(
+                member=member.mention, until=relative_unban, reason=reason
+            )
         )
 
     @channel.command(name="unban", description="Remove a channel ban role from a user.")
-    async def unban(self, interaction: discord.Interaction, member: discord.Member, reason: str = "") -> None:
+    async def unban(
+        self, interaction: discord.Interaction, member: discord.Member, reason: str = ""
+    ) -> None:
         """Removes a channel ban role from a user."""
         await interaction.response.defer()
         if member.id == self.bot.user.id:
-            await interaction.followup.send('<:professionalism:1350770886243909702>', ephemeral=True)
+            await interaction.followup.send(
+                "<:professionalism:1350770886243909702>", ephemeral=True
+            )
             return
 
         if isinstance(interaction.channel, discord.Thread):
@@ -277,19 +312,27 @@ class BanManager(commands.Cog, name="ban_manager"):
 
         # find which role we applied
         channel_ban_role = next(
-            (role for role in member.roles
-             if parent.overwrites_for(role).pair()[1].send_messages),
-            None
+            (
+                role
+                for role in member.roles
+                if parent.overwrites_for(role).pair()[1].send_messages
+            ),
+            None,
         )
         if not channel_ban_role:
-            await interaction.followup.send(response_bank.channel_unban_role_error, ephemeral=True)
+            await interaction.followup.send(
+                response_bank.channel_unban_role_error, ephemeral=True
+            )
             return
 
         try:
-            await member.remove_roles(channel_ban_role, reason=f'Channel unban: {reason}')
+            await member.remove_roles(
+                channel_ban_role, reason=f"Channel unban: {reason}"
+            )
         except discord.Forbidden:
             await interaction.followup.send(
-                f"Error: Could not remove ban role from {member.mention}.", ephemeral=True
+                f"Error: Could not remove ban role from {member.mention}.",
+                ephemeral=True,
             )
             return
 
@@ -298,15 +341,241 @@ class BanManager(commands.Cog, name="ban_manager"):
         embed = discord.Embed(
             color=discord.Color.green(),
             timestamp=datetime.now(timezone.utc),
-            description=f'{member.mention} has been unbanned in **#{parent}**'
+            description=f"{member.mention} has been unbanned in **#{parent}**",
         )
-        embed.add_field(name='Reason:', value=reason or 'None specified.')
-        embed.add_field(name='User ID:', value=str(member.id))
-        embed.set_author(name=f'{interaction.user} undid channel ban:', icon_url=interaction.user.display_avatar.url)
+        embed.add_field(name="Reason:", value=reason or "None specified.")
+        embed.add_field(name="User ID:", value=str(member.id))
+        embed.set_author(
+            name=f"{interaction.user} undid channel ban:",
+            icon_url=interaction.user.display_avatar.url,
+        )
 
         await self._log_mod(embed)
         await interaction.followup.send(
-            f"{member.mention} has been unbanned from the channel for reason {reason}.", ephemeral=True
+            f"{member.mention} has been unbanned from the channel for reason {reason}.",
+            ephemeral=True,
+        )
+
+    # Sub‐group for reaction bans
+    reaction = app_commands.Group(
+        name="reaction",
+        description="Manage reaction bans.",
+        guild_only=True,
+        default_permissions=discord.Permissions(manage_roles=True),
+    )
+
+    @reaction.command(name="ban", description="Temporarily ban a user from reacting.")
+    async def reaction_ban(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        length: str,
+        reason: str = "None specified.",
+    ) -> None:
+        """Applies the reaction‑ban role to a user."""
+        await interaction.response.defer()
+        # parse duration
+        try:
+            duration = self._parse_length(length)
+        except ValueError:
+            await interaction.followup.send(
+                response_bank.channel_ban_duration_error.format(length=length),
+                ephemeral=True,
+            )
+            return
+
+        guild = interaction.guild
+        role = discord.utils.get(guild.roles, name="reaction‑ban")
+        if not role:
+            await interaction.followup.send(
+                "Error: `reaction‑ban` role not found.", ephemeral=True
+            )
+            return
+
+        try:
+            await member.add_roles(role, reason=f"Reaction ban: {reason}")
+        except discord.Forbidden:
+            await interaction.followup.send(
+                f"Error: Could not apply reaction‑ban to {member.mention}.",
+                ephemeral=True,
+            )
+            return
+
+        if duration is not None:
+            unban_time = datetime.now(timezone.utc) + timedelta(hours=duration)
+            self.bot.db.add_scheduled_ban(unban_time, member.id, role.id)
+            until = f"<t:{int(unban_time.timestamp())}:R>"
+        else:
+            until = "Until further notice"
+
+        embed = discord.Embed(
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc),
+            description=f"{member.mention} has been **reaction‑banned**",
+        )
+        embed.add_field(name="Duration", value=until)
+        embed.add_field(name="Reason", value=reason)
+        embed.add_field(name="User ID", value=str(member.id))
+        embed.set_author(
+            name=f"{interaction.user} issued reaction‑ban:",
+            icon_url=interaction.user.display_avatar.url,
+        )
+        await self._log_mod(embed)
+        await interaction.followup.send(
+            f"{member.mention} reaction‑banned {until}.", ephemeral=True
+        )
+
+    @reaction.command(name="unban", description="Remove the reaction‑ban role.")
+    async def reaction_unban(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        reason: str = "None specified.",
+    ) -> None:
+        """Removes the reaction‑ban role from a user."""
+        await interaction.response.defer()
+        guild = interaction.guild
+        role = discord.utils.get(guild.roles, name="reaction‑ban")
+        if not role or role not in member.roles:
+            await interaction.followup.send(
+                "Error: That user isn’t reaction‑banned.", ephemeral=True
+            )
+            return
+
+        try:
+            await member.remove_roles(role, reason=f"Reaction unban: {reason}")
+        except discord.Forbidden:
+            await interaction.followup.send(
+                f"Error: Could not remove reaction‑ban from {member.mention}.",
+                ephemeral=True,
+            )
+            return
+
+        self.bot.db.remove_scheduled_ban(member.id, role.id)
+        embed = discord.Embed(
+            color=discord.Color.green(),
+            timestamp=datetime.now(timezone.utc),
+            description=f"{member.mention} has been **un‑reaction‑banned**",
+        )
+        embed.add_field(name="Reason", value=reason)
+        embed.add_field(name="User ID", value=str(member.id))
+        embed.set_author(
+            name=f"{interaction.user} removed reaction‑ban:",
+            icon_url=interaction.user.display_avatar.url,
+        )
+        await self._log_mod(embed)
+        await interaction.followup.send(
+            f"{member.mention} has been un‑reaction‑banned.", ephemeral=True
+        )
+
+    # Sub‐group for all-channel bans
+    all_ = app_commands.Group(
+        name="all",
+        description="Manage all-channel bans.",
+        guild_only=True,
+        default_permissions=discord.Permissions(manage_roles=True),
+    )
+
+    @all_.command(name="ban", description="Ban a user from all channels.")
+    async def all_ban(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        length: str,
+        reason: str = "None specified.",
+    ) -> None:
+        """Applies the all‑ban role to a user."""
+        await interaction.response.defer()
+        try:
+            duration = self._parse_length(length)
+        except ValueError:
+            await interaction.followup.send(
+                response_bank.channel_ban_duration_error.format(length=length),
+                ephemeral=True,
+            )
+            return
+
+        guild = interaction.guild
+        role = discord.utils.get(guild.roles, name="all‑ban")
+        if not role:
+            await interaction.followup.send(
+                "Error: `all‑ban` role not found.", ephemeral=True
+            )
+            return
+
+        try:
+            await member.add_roles(role, reason=f"All‑channel ban: {reason}")
+        except discord.Forbidden:
+            await interaction.followup.send(
+                f"Error: Could not apply all‑ban to {member.mention}.", ephemeral=True
+            )
+            return
+
+        if duration is not None:
+            unban_time = datetime.now(timezone.utc) + timedelta(hours=duration)
+            self.bot.db.add_scheduled_ban(unban_time, member.id, role.id)
+            until = f"<t:{int(unban_time.timestamp())}:R>"
+        else:
+            until = "Until further notice"
+
+        embed = discord.Embed(
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc),
+            description=f"{member.mention} has been **all‑banned**",
+        )
+        embed.add_field(name="Duration", value=until)
+        embed.add_field(name="Reason", value=reason)
+        embed.add_field(name="User ID", value=str(member.id))
+        embed.set_author(
+            name=f"{interaction.user} issued all‑ban:",
+            icon_url=interaction.user.display_avatar.url,
+        )
+        await self._log_mod(embed)
+        await interaction.followup.send(
+            f"{member.mention} all‑banned {until}.", ephemeral=True
+        )
+
+    @all_.command(name="unban", description="Remove the all‑ban role.")
+    async def all_unban(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        reason: str = "None specified.",
+    ) -> None:
+        """Removes the all‑ban role from a user."""
+        await interaction.response.defer()
+        guild = interaction.guild
+        role = discord.utils.get(guild.roles, name="all‑ban")
+        if not role or role not in member.roles:
+            await interaction.followup.send(
+                "Error: That user isn’t all‑banned.", ephemeral=True
+            )
+            return
+
+        try:
+            await member.remove_roles(role, reason=f"All‑unban: {reason}")
+        except discord.Forbidden:
+            await interaction.followup.send(
+                f"Error: Could not remove all‑ban from {member.mention}.",
+                ephemeral=True,
+            )
+            return
+
+        self.bot.db.remove_scheduled_ban(member.id, role.id)
+        embed = discord.Embed(
+            color=discord.Color.green(),
+            timestamp=datetime.now(timezone.utc),
+            description=f"{member.mention} has been **un‑all‑banned**",
+        )
+        embed.add_field(name="Reason", value=reason)
+        embed.add_field(name="User ID", value=str(member.id))
+        embed.set_author(
+            name=f"{interaction.user} removed all‑ban:",
+            icon_url=interaction.user.display_avatar.url,
+        )
+        await self._log_mod(embed)
+        await interaction.followup.send(
+            f"{member.mention} has been un‑all‑banned.", ephemeral=True
         )
 
     @app_commands.guild_only
@@ -321,7 +590,9 @@ class BanManager(commands.Cog, name="ban_manager"):
         active_bans = self.bot.db.get_active_scheduled_bans(now)
 
         if not active_bans:
-            await interaction.followup.send(response_bank.no_active_channel_bans, ephemeral=True)
+            await interaction.followup.send(
+                response_bank.no_active_channel_bans, ephemeral=True
+            )
             return
 
         lines = []
