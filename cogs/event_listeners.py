@@ -206,10 +206,7 @@ class EventListeners(commands.Cog, name="events"):
 
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message) -> None:
-        """Logs message deletions to the configured channel, attaching large content."""
-        if message.author.bot:
-            return
-        if not self.msglog_channel_id:
+        if message.author.bot or not self.msglog_channel_id:
             return
 
         ch = self.bot.get_channel(self.msglog_channel_id)
@@ -217,24 +214,57 @@ class EventListeners(commands.Cog, name="events"):
             return
 
         now = datetime.now(timezone.utc)
-        embed = discord.Embed(
-            title="Message Deleted",
-            color=discord.Color.red(),
-            timestamp=now,
-        )
-        embed.description = f"Message sent by {message.author.mention} Deleted in {message.channel.mention}"
 
-        content_text = message.content or "[no text content]"
-        content_val, content_file = self._maybe_attach_content(
-            content_text, prefix="content"
-        )
-        embed.add_field(name="Content", value=content_val, inline=False)
+        # 1) Log text content deletion, if any
+        if message.content:
+            embed = discord.Embed(
+                title="Message Deleted",
+                color=discord.Color.red(),
+                timestamp=now,
+            )
+            embed.description = f"Message sent by {message.author.mention} Deleted in {message.channel.mention}"
+            content_val, content_file = self._maybe_attach_content(
+                message.content, prefix="content"
+            )
+            embed.add_field(name="Content", value=content_val, inline=False)
+            embed.set_footer(
+                text=(
+                    f"Author ID: {message.author.id} | "
+                    f"Message ID: {message.id} • {self._relative_ts(now)}"
+                )
+            )
+            await ch.send(embed=embed, files=[content_file] if content_file else None)
 
-        embed.set_footer(
-            text=f"Author ID: {message.author.id} | Message ID: {message.id}"
-        )
+        # 2) Log each attachment separately
+        for att in message.attachments:
+            # Decide title based on whether it's an image or other file
+            title = (
+                "Image Deleted"
+                if att.filename.lower().endswith(
+                    (".png", ".jpg", ".gif", ".webp", ".jpeg")
+                )
+                else "File Deleted"
+            )
+            att_embed = discord.Embed(
+                title=title,
+                color=discord.Color.orange(),
+                timestamp=now,
+            )
+            att_embed.description = f"{title} sent by {message.author.mention} Deleted in {message.channel.mention}"
+            # If it's an image, show it; otherwise just link the file
+            if any(
+                att.filename.lower().endswith(ext)
+                for ext in (".png", ".jpg", ".jpeg", ".gif", ".webp")
+            ):
+                att_embed.set_image(url=att.url)
+            else:
+                att_embed.add_field(name="Filename", value=att.filename, inline=True)
+                att_embed.add_field(name="URL", value=att.url, inline=False)
 
-        await ch.send(embed=embed, files=[content_file] if content_file else None)
+            att_embed.set_footer(
+                text=f"Author ID: {message.author.id} | " f"Message ID: {message.id}"
+            )
+            await ch.send(embed=att_embed)
 
     @commands.Cog.listener()
     async def on_message(self, msg: discord.Message) -> None:
