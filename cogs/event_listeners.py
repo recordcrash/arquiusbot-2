@@ -74,6 +74,7 @@ class EventListeners(commands.Cog, name="events"):
         *,
         fields: list[tuple[str, str, bool]] = None,
         image_url: str = None,
+        files: list[discord.File] = None,
     ) -> None:
         """Helper to send a simple embed to a given channel."""
         if not channel_id:
@@ -95,7 +96,16 @@ class EventListeners(commands.Cog, name="events"):
         if image_url:
             embed.set_image(url=image_url)
 
-        await ch.send(embed=embed)
+        try:
+            await ch.send(embed=embed, files=files)
+        except discord.Forbidden:
+            self.bot.log(
+                message=f"Forbidden to send to {channel_id}", name="_log_simple_event"
+            )
+        except discord.HTTPException as e:
+            self.bot.log(
+                message=f"HTTP error sending log: {e}", name="_log_simple_event"
+            )
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
@@ -449,18 +459,13 @@ class EventListeners(commands.Cog, name="events"):
         self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel
     ) -> None:
         changes: list[tuple[str, str, bool]] = []
-        if (
-            isinstance(before, discord.TextChannel)
-            and isinstance(after, discord.TextChannel)
-            and before.topic != after.topic
-        ):
-            changes.append(
-                (
-                    "Topic",
-                    f"{before.topic or '[none]'} → {after.topic or '[none]'}",
-                    False,
-                )
-            )
+        files: list[discord.File] = []
+        if isinstance(before, discord.TextChannel) and before.topic != after.topic:
+            raw = f"{before.topic or '[none]'} → {after.topic or '[none]'}"
+            val, file = self._maybe_attach_content(raw, prefix="topic")
+            changes.append(("Topic", val, False))
+            if file:
+                files.append(file)
         if before.name != after.name:
             changes.append(("Name", f"{before.name} → {after.name}", False))
         if before.position != after.position:
@@ -481,6 +486,7 @@ class EventListeners(commands.Cog, name="events"):
                 description=f"Changes in {after.mention}",
                 color=discord.Color.orange(),
                 fields=changes,
+                files=files or None,
             )
 
     @commands.Cog.listener()
