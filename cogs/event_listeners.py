@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 
 import discord
 from discord.ext import commands
-from discord.utils import format_dt
 
 from classes.discordbot import DiscordBot
 
@@ -36,6 +35,9 @@ class EventListeners(commands.Cog, name="events"):
         self.msglog_channel_id: int | None = self.bot.config["bot"].get(
             "msglog_channel_id"
         )
+        self.modlog_channel_id: int | None = self.bot.config["bot"].get(
+            "modlog_channel_id"
+        )
 
     def _relative_ts(self, dt: datetime) -> str:
         """Returns a Discord relative timestamp for a datetime."""
@@ -62,6 +64,38 @@ class EventListeners(commands.Cog, name="events"):
         # indicate attachment in embed
         placeholder = f"{prefix.capitalize()} too long, see attached {filename}"
         return placeholder, file
+
+    async def _log_simple_event(
+        self,
+        channel_id: int | None,
+        title: str,
+        description: str,
+        color: discord.Color,
+        *,
+        fields: list[tuple[str, str, bool]] = None,
+        image_url: str = None,
+    ) -> None:
+        """Helper to send a simple embed to a given channel."""
+        if not channel_id:
+            return
+        ch = self.bot.get_channel(channel_id)
+        if not isinstance(ch, discord.TextChannel):
+            return
+
+        now = datetime.now(timezone.utc)
+        embed = discord.Embed(
+            title=title, description=description, color=color, timestamp=now
+        )
+
+        # attach any extra fields
+        for name, value, inline in fields or []:
+            embed.add_field(name=name, value=value, inline=inline)
+
+        # optionally include an image
+        if image_url:
+            embed.set_image(url=image_url)
+
+        await ch.send(embed=embed)
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
@@ -265,6 +299,232 @@ class EventListeners(commands.Cog, name="events"):
                 text=f"Author ID: {message.author.id} | " f"Message ID: {message.id}"
             )
             await ch.send(embed=att_embed)
+
+    @commands.Cog.listener()
+    async def on_bulk_message_delete(self, messages: list[discord.Message]):
+        channel_mention = (
+            messages[0].channel.mention if messages else "⚠️ unknown channel"
+        )
+        await self._log_simple_event(
+            self.msglog_channel_id,
+            title="Bulk Message Delete",
+            description=f"{len(messages)} messages were deleted in {channel_mention}",
+            color=discord.Color.dark_red(),
+        )
+
+    @commands.Cog.listener()
+    async def on_invite_create(self, invite: discord.Invite):
+        await self._log_simple_event(
+            self.msglog_channel_id,
+            title="Invite Created",
+            description=f"Code `{invite.code}` in {invite.channel.mention} by {invite.inviter.mention}",
+            color=discord.Color.green(),
+        )
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        if not self.modlog_channel_id:
+            return
+        ch = self.bot.get_channel(self.modlog_channel_id)
+        minor_ch = self.bot.get_channel(self.msglog_channel_id)
+        if not isinstance(ch, discord.TextChannel):
+            return
+        now = datetime.now(timezone.utc)
+
+        # Nickname changes
+        if before.nick != after.nick:
+            embed = discord.Embed(
+                title="Nickname Changed", color=discord.Color.orange(), timestamp=now
+            )
+            embed.description = f"{after.mention}"
+            embed.add_field(name="Before", value=before.nick or "[none]", inline=True)
+            embed.add_field(name="After", value=after.nick or "[none]", inline=True)
+            await minor_ch.send(embed=embed)
+
+        # Role adds/removes
+        added = [r for r in after.roles if r not in before.roles]
+        removed = [r for r in before.roles if r not in after.roles]
+        for role in added:
+            embed = discord.Embed(
+                title="Role Added", color=discord.Color.green(), timestamp=now
+            )
+            embed.description = f"{after.mention} was given **{role.name}**"
+            await minor_ch.send(embed=embed)
+        for role in removed:
+            embed = discord.Embed(
+                title="Role Removed", color=discord.Color.red(), timestamp=now
+            )
+            embed.description = f"{after.mention} lost **{role.name}**"
+            await minor_ch.send(embed=embed)
+
+        # Timeout (mute) applied / removed
+        if before.timed_out_until is None and after.timed_out_until is not None:
+            embed = discord.Embed(
+                title="Member Timed Out",
+                color=discord.Color.dark_orange(),
+                timestamp=now,
+            )
+            embed.description = f"{after.mention} timed out until <t:{int(after.timed_out_until.timestamp())}:F>"
+            await ch.send(embed=embed)
+        elif before.timed_out_until is not None and after.timed_out_until is None:
+            embed = discord.Embed(
+                title="Member Timeout Removed",
+                color=discord.Color.dark_orange(),
+                timestamp=now,
+            )
+            embed.description = f"{after.mention} is no longer timed out"
+            await ch.send(embed=embed)
+
+    @commands.Cog.listener()
+    async def on_member_ban(self, guild: discord.Guild, user: discord.User):
+        await self._log_simple_event(
+            self.modlog_channel_id,
+            title="Member Banned",
+            description=f"{user.mention} ({user})",
+            color=discord.Color.dark_red(),
+        )
+
+    @commands.Cog.listener()
+    async def on_member_unban(self, guild: discord.Guild, user: discord.User):
+        await self._log_simple_event(
+            self.modlog_channel_id,
+            title="Member Unbanned",
+            description=f"{user.mention} ({user})",
+            color=discord.Color.green(),
+        )
+
+    @commands.Cog.listener()
+    async def on_guild_role_create(self, role: discord.Role) -> None:
+        await self._log_simple_event(
+            self.modlog_channel_id,
+            title="Role Created",
+            description=f"**{role.name}** was created",
+            color=discord.Color.green(),
+            fields=[("Role ID", str(role.id), True)],
+        )
+
+    @commands.Cog.listener()
+    async def on_guild_role_delete(self, role: discord.Role) -> None:
+        await self._log_simple_event(
+            self.modlog_channel_id,
+            title="Role Deleted",
+            description=f"**{role.name}** was deleted",
+            color=discord.Color.red(),
+            fields=[("Role ID", str(role.id), True)],
+        )
+
+    @commands.Cog.listener()
+    async def on_guild_role_update(
+        self, before: discord.Role, after: discord.Role
+    ) -> None:
+        changes: list[tuple[str, str, bool]] = []
+        if before.name != after.name:
+            changes.append(("Name", f"{before.name} → {after.name}", False))
+        if before.permissions != after.permissions:
+            changes.append(("Permissions", "Changed", False))
+        if before.color != after.color:
+            changes.append(("Color", f"{before.color} → {after.color}", False))
+
+        if changes:
+            await self._log_simple_event(
+                self.modlog_channel_id,
+                title="Role Updated",
+                description=f"Changes to **{before.name}**",
+                color=discord.Color.orange(),
+                fields=changes,
+            )
+
+    @commands.Cog.listener()
+    async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> None:
+        await self._log_simple_event(
+            self.modlog_channel_id,
+            title="Channel Created",
+            description=f"{channel.mention} was created",
+            color=discord.Color.green(),
+            fields=[("Channel ID", str(channel.id), True)],
+        )
+
+    @commands.Cog.listener()
+    async def on_guild_channel_update(
+        self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel
+    ) -> None:
+        changes: list[tuple[str, str, bool]] = []
+        if (
+            isinstance(before, discord.TextChannel)
+            and isinstance(after, discord.TextChannel)
+            and before.topic != after.topic
+        ):
+            changes.append(
+                (
+                    "Topic",
+                    f"{before.topic or '[none]'} → {after.topic or '[none]'}",
+                    False,
+                )
+            )
+        if before.name != after.name:
+            changes.append(("Name", f"{before.name} → {after.name}", False))
+        if before.position != after.position:
+            changes.append(("Position", f"{before.position} → {after.position}", True))
+        if before.category != after.category:
+            changes.append(
+                (
+                    "Category",
+                    f"{before.category.name if before.category else 'None'} → "
+                    f"{after.category.name if after.category else 'None'}",
+                    True,
+                )
+            )
+        if changes:
+            await self._log_simple_event(
+                self.modlog_channel_id,
+                title="Channel Updated",
+                description=f"Changes in {after.mention}",
+                color=discord.Color.orange(),
+                fields=changes,
+            )
+
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> None:
+        await self._log_simple_event(
+            self.modlog_channel_id,
+            title="Channel Deleted",
+            description=f"{channel.name} was deleted",
+            color=discord.Color.red(),
+            fields=[("Channel ID", str(channel.id), True)],
+        )
+
+    @commands.Cog.listener()
+    async def on_guild_emoji_create(self, emoji: discord.Emoji) -> None:
+        await self._log_simple_event(
+            self.modlog_channel_id,
+            title="Emoji Created",
+            description=f":{emoji.name}: (`{emoji.id}`) was added",
+            color=discord.Color.green(),
+            image_url=str(emoji.url),
+        )
+
+    @commands.Cog.listener()
+    async def on_guild_emoji_update(
+        self, before: discord.Emoji, after: discord.Emoji
+    ) -> None:
+        if before.name != after.name:
+            await self._log_simple_event(
+                self.modlog_channel_id,
+                title="Emoji Renamed",
+                description=f"`{before.name}` → `{after.name}`",
+                color=discord.Color.orange(),
+                image_url=str(after.url),
+            )
+
+    @commands.Cog.listener()
+    async def on_guild_emoji_delete(self, emoji: discord.Emoji) -> None:
+        await self._log_simple_event(
+            self.modlog_channel_id,
+            title="Emoji Deleted",
+            description=f":{emoji.name}: (`{emoji.id}`) was removed",
+            color=discord.Color.red(),
+            image_url=str(emoji.url),
+        )
 
     @commands.Cog.listener()
     async def on_message(self, msg: discord.Message) -> None:
