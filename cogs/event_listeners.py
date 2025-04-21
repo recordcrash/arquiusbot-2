@@ -178,7 +178,7 @@ class EventListeners(commands.Cog, name="events"):
             timestamp=now,
         )
         embed.description = (
-            f"Message Edited in {before.channel.mention} • "
+            f"Message edited in {before.channel.mention} by {before.author.mention}  • "
             f"[Jump to Message]({after.jump_url})"
         )
 
@@ -222,7 +222,7 @@ class EventListeners(commands.Cog, name="events"):
                 color=discord.Color.red(),
                 timestamp=now,
             )
-            embed.description = f"Message sent by {message.author.mention} Deleted in {message.channel.mention}"
+            embed.description = f"Message sent by {message.author.mention} • Deleted in {message.channel.mention}"
             content_val, content_file = self._maybe_attach_content(
                 message.content, prefix="content"
             )
@@ -239,18 +239,18 @@ class EventListeners(commands.Cog, name="events"):
         for att in message.attachments:
             # Decide title based on whether it's an image or other file
             title = (
-                "Image Deleted"
+                "Image"
                 if att.filename.lower().endswith(
                     (".png", ".jpg", ".gif", ".webp", ".jpeg")
                 )
-                else "File Deleted"
+                else "File"
             )
             att_embed = discord.Embed(
                 title=title,
                 color=discord.Color.orange(),
                 timestamp=now,
             )
-            att_embed.description = f"{title} sent by {message.author.mention} Deleted in {message.channel.mention}"
+            att_embed.description = f"{title} sent by {message.author.mention} • Deleted in {message.channel.mention}"
             # If it's an image, show it; otherwise just link the file
             if any(
                 att.filename.lower().endswith(ext)
