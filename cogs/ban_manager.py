@@ -372,7 +372,7 @@ class BanManager(commands.Cog, name="ban_manager"):
         length: str,
         reason: str = "None specified.",
     ) -> None:
-        """Applies the reaction‑ban role to a user."""
+        """Applies the reaction-ban role to a user."""
         await interaction.response.defer()
         # parse duration
         try:
@@ -385,10 +385,10 @@ class BanManager(commands.Cog, name="ban_manager"):
             return
 
         guild = interaction.guild
-        role = discord.utils.get(guild.roles, name="reaction‑ban")
+        role = discord.utils.get(guild.roles, name="reaction-ban")
         if not role:
             await interaction.followup.send(
-                "Error: `reaction‑ban` role not found.", ephemeral=True
+                "Error: `reaction-ban` role not found.", ephemeral=True
             )
             return
 
@@ -396,7 +396,7 @@ class BanManager(commands.Cog, name="ban_manager"):
             await member.add_roles(role, reason=f"Reaction ban: {reason}")
         except discord.Forbidden:
             await interaction.followup.send(
-                f"Error: Could not apply reaction‑ban to {member.mention}.",
+                f"Error: Could not apply reaction-ban to {member.mention}.",
                 ephemeral=True,
             )
             return
@@ -411,34 +411,34 @@ class BanManager(commands.Cog, name="ban_manager"):
         embed = discord.Embed(
             color=discord.Color.red(),
             timestamp=datetime.now(timezone.utc),
-            description=f"{member.mention} has been **reaction‑banned**",
+            description=f"{member.mention} has been **reaction-banned**",
         )
         embed.add_field(name="Duration", value=until)
         embed.add_field(name="Reason", value=reason)
         embed.add_field(name="User ID", value=str(member.id))
         embed.set_author(
-            name=f"{interaction.user} issued reaction‑ban:",
+            name=f"{interaction.user} issued reaction-ban:",
             icon_url=interaction.user.display_avatar.url,
         )
         await self._log_mod(embed)
         await interaction.followup.send(
-            f"{member.mention} reaction‑banned {until}.", ephemeral=True
+            f"{member.mention} reaction-banned {until}.", ephemeral=True
         )
 
-    @reaction.command(name="unban", description="Remove the reaction‑ban role.")
+    @reaction.command(name="unban", description="Remove the reaction-ban role.")
     async def reaction_unban(
         self,
         interaction: discord.Interaction,
         member: discord.Member,
         reason: str = "None specified.",
     ) -> None:
-        """Removes the reaction‑ban role from a user."""
+        """Removes the reaction-ban role from a user."""
         await interaction.response.defer()
         guild = interaction.guild
-        role = discord.utils.get(guild.roles, name="reaction‑ban")
+        role = discord.utils.get(guild.roles, name="reaction-ban")
         if not role or role not in member.roles:
             await interaction.followup.send(
-                "Error: That user isn’t reaction‑banned.", ephemeral=True
+                "Error: That user isn’t reaction-banned.", ephemeral=True
             )
             return
 
@@ -446,7 +446,7 @@ class BanManager(commands.Cog, name="ban_manager"):
             await member.remove_roles(role, reason=f"Reaction unban: {reason}")
         except discord.Forbidden:
             await interaction.followup.send(
-                f"Error: Could not remove reaction‑ban from {member.mention}.",
+                f"Error: Could not remove reaction-ban from {member.mention}.",
                 ephemeral=True,
             )
             return
@@ -455,17 +455,17 @@ class BanManager(commands.Cog, name="ban_manager"):
         embed = discord.Embed(
             color=discord.Color.green(),
             timestamp=datetime.now(timezone.utc),
-            description=f"{member.mention} has been **un‑reaction‑banned**",
+            description=f"{member.mention} has been **un-reaction-banned**",
         )
         embed.add_field(name="Reason", value=reason)
         embed.add_field(name="User ID", value=str(member.id))
         embed.set_author(
-            name=f"{interaction.user} removed reaction‑ban:",
+            name=f"{interaction.user} removed reaction-ban:",
             icon_url=interaction.user.display_avatar.url,
         )
         await self._log_mod(embed)
         await interaction.followup.send(
-            f"{member.mention} has been un‑reaction‑banned.", ephemeral=True
+            f"{member.mention} has been un-reaction-banned.", ephemeral=True
         )
 
     # Sub‐group for all-channel bans
@@ -484,7 +484,7 @@ class BanManager(commands.Cog, name="ban_manager"):
         length: str,
         reason: str = "None specified.",
     ) -> None:
-        """Applies the all‑ban role to a user."""
+        """Applies the all-ban role to a user."""
         await interaction.response.defer()
         try:
             duration = self._parse_length(length)
@@ -496,18 +496,18 @@ class BanManager(commands.Cog, name="ban_manager"):
             return
 
         guild = interaction.guild
-        role = discord.utils.get(guild.roles, name="all‑ban")
+        role = discord.utils.get(guild.roles, name="all-ban")
         if not role:
             await interaction.followup.send(
-                "Error: `all‑ban` role not found.", ephemeral=True
+                "Error: `all-ban` role not found.", ephemeral=True
             )
             return
 
         try:
-            await member.add_roles(role, reason=f"All‑channel ban: {reason}")
+            await member.add_roles(role, reason=f"All-channel ban: {reason}")
         except discord.Forbidden:
             await interaction.followup.send(
-                f"Error: Could not apply all‑ban to {member.mention}.", ephemeral=True
+                f"Error: Could not apply all-ban to {member.mention}.", ephemeral=True
             )
             return
 
@@ -521,42 +521,42 @@ class BanManager(commands.Cog, name="ban_manager"):
         embed = discord.Embed(
             color=discord.Color.red(),
             timestamp=datetime.now(timezone.utc),
-            description=f"{member.mention} has been **all‑banned**",
+            description=f"{member.mention} has been **all-banned**",
         )
         embed.add_field(name="Duration", value=until)
         embed.add_field(name="Reason", value=reason)
         embed.add_field(name="User ID", value=str(member.id))
         embed.set_author(
-            name=f"{interaction.user} issued all‑ban:",
+            name=f"{interaction.user} issued all-ban:",
             icon_url=interaction.user.display_avatar.url,
         )
         await self._log_mod(embed)
         await interaction.followup.send(
-            f"{member.mention} all‑banned {until}.", ephemeral=True
+            f"{member.mention} all-banned {until}.", ephemeral=True
         )
 
-    @all_.command(name="unban", description="Remove the all‑ban role.")
+    @all_.command(name="unban", description="Remove the all-ban role.")
     async def all_unban(
         self,
         interaction: discord.Interaction,
         member: discord.Member,
         reason: str = "None specified.",
     ) -> None:
-        """Removes the all‑ban role from a user."""
+        """Removes the all-ban role from a user."""
         await interaction.response.defer()
         guild = interaction.guild
-        role = discord.utils.get(guild.roles, name="all‑ban")
+        role = discord.utils.get(guild.roles, name="all-ban")
         if not role or role not in member.roles:
             await interaction.followup.send(
-                "Error: That user isn’t all‑banned.", ephemeral=True
+                "Error: That user isn’t all-banned.", ephemeral=True
             )
             return
 
         try:
-            await member.remove_roles(role, reason=f"All‑unban: {reason}")
+            await member.remove_roles(role, reason=f"All-unban: {reason}")
         except discord.Forbidden:
             await interaction.followup.send(
-                f"Error: Could not remove all‑ban from {member.mention}.",
+                f"Error: Could not remove all-ban from {member.mention}.",
                 ephemeral=True,
             )
             return
@@ -565,17 +565,17 @@ class BanManager(commands.Cog, name="ban_manager"):
         embed = discord.Embed(
             color=discord.Color.green(),
             timestamp=datetime.now(timezone.utc),
-            description=f"{member.mention} has been **un‑all‑banned**",
+            description=f"{member.mention} has been **un-all-banned**",
         )
         embed.add_field(name="Reason", value=reason)
         embed.add_field(name="User ID", value=str(member.id))
         embed.set_author(
-            name=f"{interaction.user} removed all‑ban:",
+            name=f"{interaction.user} removed all-ban:",
             icon_url=interaction.user.display_avatar.url,
         )
         await self._log_mod(embed)
         await interaction.followup.send(
-            f"{member.mention} has been un‑all‑banned.", ephemeral=True
+            f"{member.mention} has been un-all-banned.", ephemeral=True
         )
 
     @app_commands.guild_only
