@@ -24,7 +24,7 @@ class EventListeners(commands.Cog, name="events"):
         self.bot = bot
         self.subconfig_data: dict = self.bot.config["cogs"][self.__cog_name__.lower()]
         self.autoreact_channel_ids: list[int] = self.subconfig_data.get("autoreact_channel_ids", [])
-        self.usrlog_channel_id: int | None = self.subconfig_data.get("usrlog_channel_id")
+        self.usrlog_channel_id: int | None = self.bot.config["bot"].get("usrlog_channel_id")
 
     def _relative_ts(self, dt: datetime) -> str:
         """Returns a Discord relative timestamp for a datetime."""
