@@ -38,6 +38,11 @@ class BanManager(commands.Cog, name="ban_manager"):
         # Always rebuild after a resume
         await self._build_ban_maps()
 
+    async def _ensure_ban_maps(self) -> None:
+        if not self.channel_ban_map:
+            # only rebuild if we truly have a guild and channels loaded
+            await self._build_ban_maps()
+
     @commands.command(name="rebuild_ban_maps")
     @commands.is_owner()
     async def rebuild_ban_maps(self, ctx: commands.Context) -> None:
@@ -189,6 +194,7 @@ class BanManager(commands.Cog, name="ban_manager"):
     ) -> None:
         """Applies a channel ban role to a user for a specified duration."""
         await interaction.response.defer()
+        await self._ensure_ban_maps()
         try:
             duration = self._parse_length(length)
         except ValueError:
