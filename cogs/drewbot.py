@@ -208,7 +208,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
                     footer = embed.footer.text
                     if footer:
                         embed.set_footer(
-                            text=f"{footer}|Bot will not remember this conversation's history."
+                            text=f"{footer} | Conversation history has been pruned."
                         )
                     await self.safe_edit_message(msg, embeds=msg.embeds)
                 expired.append((channel_id, msg_id))
