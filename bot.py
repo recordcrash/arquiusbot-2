@@ -3,9 +3,16 @@ import logging
 
 from classes.database import Database
 from classes.discordbot import DiscordBot, IgnorePlebsCommandTree
-from classes.utilities import load_config, clean_close, cogs_manager, set_logging, cogs_directory
+from classes.utilities import (
+    load_config,
+    clean_close,
+    cogs_manager,
+    set_logging,
+    cogs_directory,
+)
 
 from os import listdir
+
 
 class Bot(DiscordBot):
     def __init__(self, **kwargs) -> None:
@@ -24,7 +31,10 @@ class Bot(DiscordBot):
         """Sync application commands."""
         await self.wait_until_ready()
         synced = await self.tree.sync()
-        self.log(message=f"Application commands synced ({len(synced)})", name="discord.startup")
+        self.log(
+            message=f"Application commands synced ({len(synced)})",
+            name="discord.startup",
+        )
 
     async def setup_hook(self) -> None:
         """Initialize the bot, global persistent objects & cogs."""
@@ -34,7 +44,11 @@ class Bot(DiscordBot):
         self.db = Database()
 
         # Get all available cogs
-        available_cogs = [filename[:-3] for filename in listdir(cogs_directory) if filename.endswith(".py")]
+        available_cogs = [
+            filename[:-3]
+            for filename in listdir(cogs_directory)
+            if filename.endswith(".py")
+        ]
 
         # Check if specific cogs are enabled in config
         enabled_cogs = self.config["bot"].get("enabled_cogs", [])
@@ -45,39 +59,39 @@ class Bot(DiscordBot):
 
             if len(valid_cogs) < len(enabled_cogs):
                 missing_cogs = set(enabled_cogs) - set(valid_cogs)
-                self.log(message=f"Warning: Some enabled cogs were not found: {', '.join(missing_cogs)}",
-                         name="discord.setup_hook")
+                self.log(
+                    message=f"Warning: Some enabled cogs were not found: {', '.join(missing_cogs)}",
+                    name="discord.setup_hook",
+                )
 
             # Convert to full module paths
             cogs_to_load = [f"cogs.{cog}" for cog in valid_cogs]
-            self.log(message=f"Loading specified cogs: {', '.join(valid_cogs)}", name="discord.setup_hook")
+            self.log(
+                message=f"Loading specified cogs: {', '.join(valid_cogs)}",
+                name="discord.setup_hook",
+            )
         else:
             # Load all cogs if none specified
             cogs_to_load = [f"cogs.{cog}" for cog in available_cogs]
-            self.log(message=f"No specific cogs enabled in config, loading all cogs", name="discord.setup_hook")
+            self.log(
+                message=f"No specific cogs enabled in config, loading all cogs",
+                name="discord.setup_hook",
+            )
 
         # Load the selected cogs
         await cogs_manager(self, "load", cogs_to_load)
-        self.log(message=f"Cogs loaded ({len(cogs_to_load)}): {', '.join(cogs_to_load)}", name="discord.setup_hook")
+        self.log(
+            message=f"Cogs loaded ({len(cogs_to_load)}): {', '.join(cogs_to_load)}",
+            name="discord.setup_hook",
+        )
 
         # Start the startup task.
         self.loop.create_task(self.startup())
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     clean_close()
     bot = Bot(
-        intents=discord.Intents(
-            emojis=True,
-            guild_scheduled_events=True,
-            guilds=True,
-            invites=True,
-            members=True,
-            message_content=True,
-            messages=True,
-            presences=True,
-            reactions=True,
-            voice_states=True,
-        ),
         tree_cls=IgnorePlebsCommandTree,
     )
     bot.logger, streamHandler = set_logging(

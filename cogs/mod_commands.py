@@ -8,6 +8,7 @@ from discord.ext import commands
 from classes.discordbot import DiscordBot
 from classes.response_bank import url_bank
 
+
 class ModCommands(commands.Cog, name="mod_commands"):
     """Moderation commands available only to mods and admins."""
 
@@ -29,14 +30,30 @@ class ModCommands(commands.Cog, name="mod_commands"):
                 "This bot provides moderation, utility, and statistics tracking.\n"
                 "For issues, direct your attention to **makin**.\n\n"
                 "**Moderation Command List:**"
-            )
+            ),
         )
-        embed.set_author(name="Moderation Help message", icon_url=self.bot.user.display_avatar.url)
+        embed.set_author(
+            name="Moderation Help message", icon_url=self.bot.user.display_avatar.url
+        )
         embed.add_field(name="`modhelp`", value="Show this message.", inline=False)
-        embed.add_field(name="`modperms`", value="Show your guild permissions.", inline=False)
-        embed.add_field(name="`channel (ban|unban) <user>`", value="Mute/unmute a user in a channel.", inline=False)
-        embed.add_field(name="`raidban <user1> [user2 user3 ...]`", value="Ban multiple users.", inline=False)
-        embed.add_field(name="`za(warudo|hando)|timeresumes`", value="Use dangerous Stand powers to moderate the server.", inline=False)
+        embed.add_field(
+            name="`modperms`", value="Show your guild permissions.", inline=False
+        )
+        embed.add_field(
+            name="`channel (ban|unban) <user>`",
+            value="Mute/unmute a user in a channel.",
+            inline=False,
+        )
+        embed.add_field(
+            name="`raidban <user1> [user2 user3 ...]`",
+            value="Ban multiple users.",
+            inline=False,
+        )
+        embed.add_field(
+            name="`za(warudo|hando)|timeresumes`",
+            value="Use dangerous Stand powers to moderate the server.",
+            inline=False,
+        )
 
         await interaction.response.send_message(embed=embed)
 
@@ -45,11 +62,13 @@ class ModCommands(commands.Cog, name="mod_commands"):
     @app_commands.default_permissions(manage_roles=True)
     async def modperms(self, interaction: discord.Interaction) -> None:
         """Lists the user's permissions in the guild."""
-        permlist = ', '.join(perm for perm, val in interaction.user.guild_permissions if val)
+        permlist = ", ".join(
+            perm for perm, val in interaction.user.guild_permissions if val
+        )
         embed = discord.Embed(
             color=interaction.user.color,
             timestamp=datetime.now(timezone.utc),
-            description=f"```{permlist}```"
+            description=f"```{permlist}```",
         )
         embed.set_author(name=f"{interaction.user} has the following guild perms:")
         embed.set_thumbnail(url=interaction.user.display_avatar.url)
@@ -111,7 +130,7 @@ class ModCommands(commands.Cog, name="mod_commands"):
                 )
 
         if banned_users:
-            desc = f"D--> The following users have been STRONGLY executed:\n{', '.join(banned_users)}"
+            desc = f"D--> The following users have been STRONGLY e%ecuted:\n{', '.join(banned_users)}"
             messages.append(desc)
             embed = discord.Embed(
                 color=discord.Color.red(),
@@ -152,21 +171,22 @@ class ModCommands(commands.Cog, name="mod_commands"):
             embed = discord.Embed(
                 color=discord.Color(0xE4E951),
                 timestamp=datetime.now(timezone.utc),
-                description=f"D--> The time is neigh; your foolish actions shall face STRONG consequences, **#{target_channel}**! It is __***USELESS***__ to resist!"
+                description=f"D--> The time is neigh; your foolish actions shall face STRONG consequences, **#{target_channel}**! It is __***USELESS***__ to resist!",
             )
-            embed.set_author(name='D--> 「ザ・ワールド」!!', icon_url=url_bank.dio_icon)
+            embed.set_author(name="D--> 「ザ・ワールド」!!", icon_url=url_bank.dio_icon)
             embed.set_image(url=url_bank.za_warudo)
 
             perms = target_channel.overwrites_for(interaction.guild.default_role)
             perms.send_messages = False
-            await target_channel.set_permissions(interaction.guild.default_role, overwrite=perms)
+            await target_channel.set_permissions(
+                interaction.guild.default_role, overwrite=perms
+            )
 
             await interaction.response.send_message(embed=embed)
         else:
             await interaction.response.send_message(
                 "Channel is already frozen.", ephemeral=True
             )
-
 
     @app_commands.guild_only
     @app_commands.command(name="timeresumes", description="Resume time in the channel.")
@@ -260,10 +280,12 @@ class ModCommands(commands.Cog, name="mod_commands"):
                 )
                 await log_channel.send(embed=log_embed)
 
-
     @app_commands.guild_only
     @app_commands.default_permissions(manage_roles=True)
-    @app_commands.command(name="ignoreplebs", description="Toggles the bot accepting commands in a certain channel.")
+    @app_commands.command(
+        name="ignoreplebs",
+        description="Toggles the bot accepting commands in a certain channel.",
+    )
     async def ignoreplebs(self, interaction: discord.Interaction):
         # Toggle the ignoreplebs category for this channel.
         if isinstance(interaction.channel, discord.Thread):
@@ -276,7 +298,10 @@ class ModCommands(commands.Cog, name="mod_commands"):
                 "D--> I shall listen only to b100 b100ded commands."
             )
         else:
-            await interaction.response.send_message("D--> Unfortunately, I must now listen to the lower classes.")
+            await interaction.response.send_message(
+                "D--> Unfortunately, I must now listen to the lower classes."
+            )
+
 
 async def setup(bot: DiscordBot) -> None:
     await bot.add_cog(ModCommands(bot))
