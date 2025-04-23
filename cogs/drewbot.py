@@ -254,7 +254,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
     @app_commands.describe(
         prompt="Your message",
         model="Select a model (default is the first in the list)",
-        temperature="Optional: Set the response temperature (0-1.5, default is 0.7)",
+        temperature="Optional: Set the response temperature (0-1.2, default is 0.7)",
     )
     @app_commands.autocomplete(model=model_autocomplete)
     async def chat(
@@ -262,7 +262,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         interaction: discord.Interaction,
         prompt: str,
         model: str | None = None,
-        temperature: discord.app_commands.Range[float, 0.0, 1.5] | None = None,
+        temperature: discord.app_commands.Range[float, 0.0, 1.2] | None = None,
     ) -> None:
         """
         Sends the user's prompt to OpenAI's Responses API and returns the processed reply.
