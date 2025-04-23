@@ -29,7 +29,9 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         self.choices: list[app_commands.Choice[str]] = []
         for choice in self.model_choices:
             display_name = f"{choice['name']} - {choice['description']}"
-            self.choices.append(app_commands.Choice(name=display_name, value=choice["id"]))
+            self.choices.append(
+                app_commands.Choice(name=display_name, value=choice["id"])
+            )
         self.base_temperature = self.subconfig_data["base_temperature"]
         self.system_prompt = self.subconfig_data["system_prompt"]
         self.username = self.subconfig_data["username"]
@@ -37,7 +39,9 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         # Storage variables
         self.server_emotes: dict[str, str] = {}
         # {(channel_id, discord_msg_id): (openai_response_id, datetime, model_id, temperature, label)}
-        self.active_conversations: dict[(int, int), (str, datetime, str, float, str)] = {}
+        self.active_conversations: dict[
+            (int, int), (str, datetime, str, float, str)
+        ] = {}
         self.edit_lock = asyncio.Lock()
         self.last_edit: datetime | None = None  # timestamp of the most recent edit
         self.conversation_timeout = timedelta(minutes=30)
@@ -66,7 +70,8 @@ class DrewBotCog(commands.Cog, name="drewbot"):
             return
 
         author_is_patron = any(
-            role.id in self.patron_role_ids for role in getattr(message.author, "roles", [])
+            role.id in self.patron_role_ids
+            for role in getattr(message.author, "roles", [])
         )
         if not author_is_patron:
             return
@@ -125,23 +130,27 @@ class DrewBotCog(commands.Cog, name="drewbot"):
 
         if show_user_embed:
             embed_user = discord.Embed(color=discord.Color.blurple())
-            embed_user.set_author(name=f"{author.name}", icon_url=author.display_avatar.url)
+            embed_user.set_author(
+                name=f"{author.name}", icon_url=author.display_avatar.url
+            )
             embed_user.description = prompt
             embeds.append(embed_user)
 
         embed_bot = discord.Embed(color=discord.Color.green())
         embed_bot.set_author(name="Drewbot", icon_url=url_bank.drewbot_icon)
         embed_bot.description = "<a:loading:1351145092659937280>"
-        embed_bot.set_footer(text="Generated with drewbot-model | Tokens: 000 | Cost: $0.0010")
+        embed_bot.set_footer(
+            text="Generated with drewbot-model | Tokens: 000 | Cost: $0.0010"
+        )
         embeds.append(embed_bot)
 
         if interaction is not None:
             bot_msg = await interaction.followup.send(embeds=embeds)
         else:
             bot_msg = await channel.send(
-                embeds = embeds,
-                reference = reply_target.to_reference() if reply_target else None,
-                mention_author = False,
+                embeds=embeds,
+                reference=reply_target.to_reference() if reply_target else None,
+                mention_author=False,
             )
 
         last_update = datetime.now()
@@ -157,7 +166,9 @@ class DrewBotCog(commands.Cog, name="drewbot"):
                 full_content != last_content
                 and (datetime.now() - last_update).total_seconds() > 0.5
             ):
-                embed_bot.description = f"{full_content}\n<a:loading:1351145092659937280>"
+                embed_bot.description = (
+                    f"{full_content}\n<a:loading:1351145092659937280>"
+                )
                 embed_bot.set_footer(text=footer_text)
                 await self.safe_edit_message(bot_msg, embeds=embeds)
                 last_content = full_content
@@ -184,7 +195,11 @@ class DrewBotCog(commands.Cog, name="drewbot"):
     async def prune_conversations(self):
         expired = []
         now = datetime.now(timezone.utc)
-        for (channel_id, msg_id), (resp_id, timestamp, *_rest) in self.active_conversations.items():
+        for (channel_id, msg_id), (
+            resp_id,
+            timestamp,
+            *_rest,
+        ) in self.active_conversations.items():
             if now - timestamp > self.conversation_timeout:
                 channel = self.bot.get_channel(channel_id)
                 msg = await channel.fetch_message(msg_id)
@@ -192,7 +207,9 @@ class DrewBotCog(commands.Cog, name="drewbot"):
                     embed = msg.embeds[-1]
                     footer = embed.footer.text
                     if footer:
-                        embed.set_footer(text=f"{footer}|Bot will not remember this conversation's history.")
+                        embed.set_footer(
+                            text=f"{footer}|Bot will not remember this conversation's history."
+                        )
                     await self.safe_edit_message(msg, embeds=msg.embeds)
                 expired.append((channel_id, msg_id))
         for k in expired:
@@ -231,11 +248,13 @@ class DrewBotCog(commands.Cog, name="drewbot"):
             username = "dirtbreadman"
         return f"{username}: {text}\n{self.username}: "
 
-    @app_commands.command(name="drewbot", description="Chat with Drewbot. (Patron-only)")
+    @app_commands.command(
+        name="drewbot", description="Chat with Drewbot. (Patron-only)"
+    )
     @app_commands.describe(
         prompt="Your message",
         model="Select a model (default is the first in the list)",
-        temperature="Optional: Set the response temperature (0-2, default is from config)",
+        temperature="Optional: Set the response temperature (0-1.5, default is 0.7)",
     )
     @app_commands.autocomplete(model=model_autocomplete)
     async def chat(
@@ -243,14 +262,16 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         interaction: discord.Interaction,
         prompt: str,
         model: str | None = None,
-        temperature: float | None = None,
+        temperature: discord.app_commands.Range[float, 0.0, 1.5] | None = None,
     ) -> None:
         """
         Sends the user's prompt to OpenAI's Responses API and returns the processed reply.
         The final message is sent via a webhook with the nickname "Drewbot" and a custom avatar.
         A footer is appended on a new line using the "-# " syntax.
         """
-        user_is_patron = any(user_has_role(interaction, role) for role in self.patron_role_ids)
+        user_is_patron = any(
+            user_has_role(interaction, role) for role in self.patron_role_ids
+        )
         if not user_is_patron:
             await interaction.response.send_message(
                 "D--> You must have the Patron role to use this command.",

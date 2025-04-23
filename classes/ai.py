@@ -5,6 +5,7 @@ from constants.ai import MODEL_PRICING_TABLE
 
 # --- Pricing Table & Helpers ---
 
+
 def get_pricing_rates(model_string: str) -> dict:
     """
     Returns pricing rates for the given model.
@@ -23,7 +24,9 @@ def get_pricing_rates(model_string: str) -> dict:
                 base_model, {"input": 0, "cached_input": 0, "output": 0}
             )
     else:
-        return MODEL_PRICING_TABLE.get(model, {"input": 0, "cached_input": 0, "output": 0})
+        return MODEL_PRICING_TABLE.get(
+            model, {"input": 0, "cached_input": 0, "output": 0}
+        )
 
 
 def calculate_cost(usage, model_string: str) -> float:
@@ -47,10 +50,11 @@ def calculate_cost(usage, model_string: str) -> float:
         + cached_tokens * rates["cached_input"]
         + output_tokens * rates["output"]
     ) / 1000000
-    return min(total_cost, 0.0001)
+    return max(total_cost, 0.0001)
 
 
 # --- Text Processing Helpers ---
+
 
 def get_base_model_name(model_string: str) -> str:
     """
@@ -62,6 +66,7 @@ def get_base_model_name(model_string: str) -> str:
         return model_string.split(":")[0] + ":" + model_string.split(":")[1]
     return model_string.split(":")[0]
 
+
 def get_user_friendly_model_string(model: str) -> str:
     """
     Returns either the base model name or the finetuned_name depending
@@ -72,15 +77,17 @@ def get_user_friendly_model_string(model: str) -> str:
         return model.split(":")[3]
     return model.split(":")[0]
 
+
 # --- AI Client ---
+
 
 class AIClient:
     def __init__(
-            self,
-            api_key: str = None,
-            censored_words: list[str] = None,
-            censor_character: str = "*",
-            server_emotes: dict[str, str] = None
+        self,
+        api_key: str = None,
+        censored_words: list[str] = None,
+        censor_character: str = "*",
+        server_emotes: dict[str, str] = None,
     ) -> None:
         if not censored_words:
             censored_words = []
@@ -92,8 +99,15 @@ class AIClient:
         self.censor_character: str = censor_character
         self.server_emotes: dict[str, str] = server_emotes
 
-    async def stream_response(self, model: str, label: str, system_prompt: str, prompt: str, prev_resp_id: str | None=None, temperature: float=1.0)\
-            -> AsyncGenerator[tuple[str | None, str | Any, str], Any]:
+    async def stream_response(
+        self,
+        model: str,
+        label: str,
+        system_prompt: str,
+        prompt: str,
+        prev_resp_id: str | None = None,
+        temperature: float = 1.0,
+    ) -> AsyncGenerator[tuple[str | None, str | Any, str], Any]:
         input_characters = len(prompt)
         input_tokens = input_characters // 4
         real_max_output_characters = 1000
@@ -157,5 +171,7 @@ class AIClient:
         """
         emoted_text = self.replace_emotes(text)
         censored_text = self.censor_text(emoted_text)
-        trimmed_text = censored_text[:1000] + "..." if len(censored_text) > 1000 else censored_text
+        trimmed_text = (
+            censored_text[:1000] + "..." if len(censored_text) > 1000 else censored_text
+        )
         return trimmed_text
