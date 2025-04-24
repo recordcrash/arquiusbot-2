@@ -1,4 +1,6 @@
+import importlib
 import os
+import sys
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -137,6 +139,26 @@ class Admin(commands.Cog, name="admin"):
         )
 
         await ctx.send(f":pinched_fingers: `{len(tree)}` synced!")
+
+    @bot_has_permissions(send_messages=True)
+    @commands.command(name="reloadmodule", aliases=["rmod"])
+    @commands.is_owner()
+    async def reload_module(self, ctx: commands.Context, dotted_path: str) -> None:
+        """Reload an arbitrary python module by dotted path."""
+        if dotted_path not in sys.modules:
+            # import it for the first time so reload() has something to work on
+            try:
+                importlib.import_module(dotted_path)
+            except Exception as exc:
+                await ctx.send(f"❌ Import failed: `{exc}`")
+                return
+
+        try:
+            new_mod = importlib.reload(sys.modules[dotted_path])
+        except Exception as exc:
+            await ctx.send(f"❌ Reload failed: `{exc}`")
+        else:
+            await ctx.send(f"✅ Reloaded `{dotted_path}` ({new_mod.__file__})")
 
     @bot_has_permissions(send_messages=True, attach_files=True)
     @commands.command(name="botlogs", aliases=["bl"])
