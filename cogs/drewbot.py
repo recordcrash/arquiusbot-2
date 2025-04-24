@@ -140,7 +140,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         embed_bot.set_author(name="Drewbot", icon_url=url_bank.drewbot_icon)
         embed_bot.description = "<a:loading:1351145092659937280>"
         embed_bot.set_footer(
-            text="Generated with drewbot-model | Tokens: 000 | Cost: $0.0010"
+            text=f"☸{label} | 🌡{round(temperature, 3)} | ✉XXX | $0.0010"
         )
         embeds.append(embed_bot)
 
@@ -207,9 +207,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
                     embed = msg.embeds[-1]
                     footer = embed.footer.text
                     if footer:
-                        embed.set_footer(
-                            text=f"{footer} | Conversation history has been pruned."
-                        )
+                        embed.set_footer(text=f"{footer} | ✂Pruned")
                     await self.safe_edit_message(msg, embeds=msg.embeds)
                 expired.append((channel_id, msg_id))
         for k in expired:
@@ -254,7 +252,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
     @app_commands.describe(
         prompt="Your message",
         model="Select a model (default is the first in the list)",
-        temperature="Optional: Set the response temperature (0-1.2, default is 0.7)",
+        temperature="Optional: Set the response temperature (0-1.111, default is 0.7)",
     )
     @app_commands.autocomplete(model=model_autocomplete)
     async def chat(
@@ -262,7 +260,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         interaction: discord.Interaction,
         prompt: str,
         model: str | None = None,
-        temperature: discord.app_commands.Range[float, 0.0, 1.2] | None = None,
+        temperature: discord.app_commands.Range[float, 0.0, 1.111] | None = None,
     ) -> None:
         """
         Sends the user's prompt to OpenAI's Responses API and returns the processed reply.

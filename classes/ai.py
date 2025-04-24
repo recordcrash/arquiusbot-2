@@ -130,9 +130,7 @@ class AIClient:
 
         content = ""
         footer = (
-            f"Generated with {model_label} | "
-            f"Tokens: {input_tokens} | "
-            f"Cost: $0.0010"
+            f"☸{model_label} | 🌡{round(temperature, 3)} | ✉{input_tokens} | $0.0001"
         )
         response_id = None
 
@@ -146,9 +144,10 @@ class AIClient:
                 if event.response.usage:
                     cost = calculate_cost(event.response.usage, model)
                     footer = (
-                        f"Generated with {model_label} | "
-                        f"Tokens: {event.response.usage.total_tokens} | "
-                        f"Cost: ${cost:.4f}"
+                        f"☸{model_label} | "
+                        f"🌡{round(temperature, 3)} | "
+                        f"✉{event.response.usage.total_tokens} | "
+                        f"${cost:.4f}"
                     )
                 yield response_id, content, footer
             elif event.type == "response.error":
