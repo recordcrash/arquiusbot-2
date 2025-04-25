@@ -12,6 +12,8 @@ IMAGE_PATTERN = re.compile(
     r"\.(png|gif|jpe?g|jfif|heif|svg|webp|avif)(?:\?.*)?$", re.IGNORECASE
 )
 
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif", ".jfif")
+
 
 class EventListeners(commands.Cog, name="events"):
     """
@@ -282,13 +284,7 @@ class EventListeners(commands.Cog, name="events"):
         # 2) Log each attachment separately
         for att in message.attachments:
             # Decide title based on whether it's an image or other file
-            title = (
-                "Image"
-                if att.filename.lower().endswith(
-                    (".png", ".jpg", ".gif", ".webp", ".jpeg")
-                )
-                else "File"
-            )
+            title = "Image" if att.filename.lower().endswith(IMAGE_EXTS) else "File"
             att_embed = discord.Embed(
                 title=title,
                 color=discord.Color.orange(),
@@ -296,11 +292,8 @@ class EventListeners(commands.Cog, name="events"):
             )
             att_embed.description = f"{title} sent by {message.author.mention} • Deleted in {message.channel.mention}"
             # If it's an image, show it; otherwise just link the file
-            if any(
-                att.filename.lower().endswith(ext)
-                for ext in (".png", ".jpg", ".jpeg", ".gif", ".webp")
-            ):
-                att_embed.set_image(url=att.url)
+            if any(att.filename.lower().endswith(ext) for ext in IMAGE_EXTS):
+                att_embed.set_image(url=att.proxy_url)
             else:
                 att_embed.add_field(name="Filename", value=att.filename, inline=True)
                 att_embed.add_field(name="URL", value=att.url, inline=False)
