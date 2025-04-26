@@ -1,5 +1,7 @@
 import io
 import re
+import time
+from collections import defaultdict
 from datetime import datetime, timezone
 
 import discord
@@ -7,12 +9,15 @@ from discord.ext import commands
 
 from classes.discordbot import DiscordBot
 
-# Matches an image file extension optionally followed by query parameters.
+# Matches an image file extension optionally followed by query parameters
 IMAGE_PATTERN = re.compile(
     r"\.(png|gif|jpe?g|jfif|heif|svg|webp|avif)(?:\?.*)?$", re.IGNORECASE
 )
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif", ".jfif")
+
+# Seconds after a ban where deleted messages won't be logged (avoid rate limits)
+IGNORE_WINDOW = 600
 
 
 class EventListeners(commands.Cog, name="events"):
@@ -40,6 +45,8 @@ class EventListeners(commands.Cog, name="events"):
         self.modlog_channel_id: int | None = self.bot.config["bot"].get(
             "modlog_channel_id"
         )
+        # Tracks recent bans to avoid logging deleted messages (user_id -> timestamp)
+        self._recent_bans: dict[int, float] = defaultdict(float)
 
     def _relative_ts(self, dt: datetime) -> str:
         """Returns a Discord relative timestamp for a datetime."""
@@ -252,11 +259,22 @@ class EventListeners(commands.Cog, name="events"):
 
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message) -> None:
+        # Ignore if the message is from a bot or if the channel is not set
+        if not message.author:
+            return
+
         if message.author.bot or not self.msglog_channel_id:
             return
 
         ch = self.bot.get_channel(self.msglog_channel_id)
         if not isinstance(ch, discord.TextChannel):
+            return
+
+        # Ignore if the message is from a user who was recently bannedg
+        if (
+            message.author.id in self._recent_bans
+            and self._recent_bans[message.author.id] > time.time()
+        ):
             return
 
         now = datetime.now(timezone.utc)
@@ -380,12 +398,17 @@ class EventListeners(commands.Cog, name="events"):
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild: discord.Guild, user: discord.User):
+        now = time.time()
+        self._recent_bans[user.id] = now + IGNORE_WINDOW
         await self._log_simple_event(
             self.modlog_channel_id,
             title="Member Banned",
             description=f"{user.mention} ({user})",
             color=discord.Color.dark_red(),
         )
+        for uid, expires in list(self._recent_bans.items()):
+            if expires < now:
+                self._recent_bans.pop(uid, None)
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild: discord.Guild, user: discord.User):
