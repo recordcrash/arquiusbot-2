@@ -105,7 +105,7 @@ if __name__ == "__main__":
         # prefix commands
         message_content=True,
     )
-    member_cache = discord.MemberCacheFlags.from_intents(intents, voice=False)
+    member_cache = discord.MemberCacheFlags.from_intents(intents=intents)
     bot = Bot(
         tree_cls=IgnorePlebsCommandTree,
         intents=intents,
