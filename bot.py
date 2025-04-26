@@ -93,6 +93,20 @@ if __name__ == "__main__":
     clean_close()
     bot = Bot(
         tree_cls=IgnorePlebsCommandTree,
+        intents=discord.Intents(
+            # guild, channel, thread events
+            guilds=True,
+            # join/leave/role events
+            members=True,
+            # bans/unbans
+            moderation=True,
+            # message events
+            guild_messages=True,
+            # reactions
+            guild_reactions=True,
+            # prefix commands
+            message_content=True,
+        ),
     )
     bot.logger, streamHandler = set_logging(
         file_level=logging.INFO,

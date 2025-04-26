@@ -334,16 +334,6 @@ class EventListeners(commands.Cog, name="events"):
         )
 
     @commands.Cog.listener()
-    async def on_invite_create(self, invite: discord.Invite):
-        mention = invite.channel.mention if invite.channel else invite.guild.name
-        await self._log_simple_event(
-            self.msglog_channel_id,
-            title="Invite Created",
-            description=f"Code `{invite.code}` in {mention} by {invite.inviter.mention}",
-            color=discord.Color.green(),
-        )
-
-    @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         if not self.modlog_channel_id:
             return
@@ -514,39 +504,6 @@ class EventListeners(commands.Cog, name="events"):
             description=f"{channel.name} was deleted",
             color=discord.Color.red(),
             fields=[("Channel ID", str(channel.id), True)],
-        )
-
-    @commands.Cog.listener()
-    async def on_guild_emoji_create(self, emoji: discord.Emoji) -> None:
-        await self._log_simple_event(
-            self.modlog_channel_id,
-            title="Emoji Created",
-            description=f":{emoji.name}: (`{emoji.id}`) was added",
-            color=discord.Color.green(),
-            image_url=str(emoji.url),
-        )
-
-    @commands.Cog.listener()
-    async def on_guild_emoji_update(
-        self, before: discord.Emoji, after: discord.Emoji
-    ) -> None:
-        if before.name != after.name:
-            await self._log_simple_event(
-                self.modlog_channel_id,
-                title="Emoji Renamed",
-                description=f"`{before.name}` → `{after.name}`",
-                color=discord.Color.orange(),
-                image_url=str(after.url),
-            )
-
-    @commands.Cog.listener()
-    async def on_guild_emoji_delete(self, emoji: discord.Emoji) -> None:
-        await self._log_simple_event(
-            self.modlog_channel_id,
-            title="Emoji Deleted",
-            description=f":{emoji.name}: (`{emoji.id}`) was removed",
-            color=discord.Color.red(),
-            image_url=str(emoji.url),
         )
 
     @commands.Cog.listener()
