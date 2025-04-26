@@ -335,10 +335,11 @@ class EventListeners(commands.Cog, name="events"):
 
     @commands.Cog.listener()
     async def on_invite_create(self, invite: discord.Invite):
+        mention = invite.channel.mention if invite.channel else invite.guild.name
         await self._log_simple_event(
             self.msglog_channel_id,
             title="Invite Created",
-            description=f"Code `{invite.code}` in {invite.channel.mention} by {invite.inviter.mention}",
+            description=f"Code `{invite.code}` in {mention} by {invite.inviter.mention}",
             color=discord.Color.green(),
         )
 
