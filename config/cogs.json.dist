@@ -5,7 +5,9 @@
             "Command me, I order it",
             "Let's e%tol the virtues of horses"
         ],
-        "cooldown": 60
+        "status_interval": 60,
+        "push_url": "https://example.com/push", // url to push heartbeat to
+        "push_interval": 60,
     },
     "daily_counter": {  // user pung by daily counter
         "ping_user_id": 0
