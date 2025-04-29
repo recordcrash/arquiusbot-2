@@ -39,6 +39,7 @@ jobs:
           DEPS_CHANGED: ${{ needs.detect-changes.outputs.deps_changed }}
         with:
           host: ${{ secrets.SERVER_IP }}
+          port: ${{ secrets.SERVER_PORT }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           envs: CORE_CHANGED,DEPS_CHANGED
