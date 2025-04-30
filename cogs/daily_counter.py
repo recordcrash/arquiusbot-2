@@ -1,3 +1,4 @@
+# daily_counter.py
 from datetime import datetime, timedelta, timezone
 import asyncio as aio
 
@@ -101,11 +102,25 @@ class DailyCounter(commands.Cog, name="daily_counter"):
     @app_commands.command(
         name="daily", description="Manually post the daily stats report."
     )
+    @app_commands.describe(
+        date="Date to report (YYYY-MM-DD). If omitted, uses previous day."
+    )
     @app_commands.default_permissions(manage_roles=True)
-    async def force_daily_post(self, interaction: discord.Interaction) -> None:
+    async def force_daily_post(
+        self, interaction: discord.Interaction, date: str | None = None
+    ) -> None:
         """Allows an admin to manually trigger the daily report."""
-        # Always report on the previous calendar day
-        report_date = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+        # Determine report date: parse provided date or use previous calendar day
+        if date:
+            try:
+                report_date = datetime.fromisoformat(date).date()
+            except ValueError:
+                await interaction.response.send_message(
+                    f"Invalid date format: {date}. Use YYYY-MM-DD.", ephemeral=True
+                )
+                return
+        else:
+            report_date = (datetime.now(timezone.utc) - timedelta(days=1)).date()
 
         log_channel_id = self.bot.config["bot"].get("modlog_channel_id")
         if not log_channel_id:
