@@ -1,7 +1,7 @@
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, date, timezone
 
 
 class Database:
@@ -37,10 +37,25 @@ class Database:
                 member_id INTEGER PRIMARY KEY,
                 last_roles TEXT    -- JSON array of role IDs
             );
-            
+
             CREATE TABLE IF NOT EXISTS channel_categories (
-            category TEXT PRIMARY KEY,
-            channels TEXT    -- JSON-encoded list of channel IDs
+                category TEXT PRIMARY KEY,
+                channels TEXT    -- JSON-encoded list of channel IDs
+            );
+
+            CREATE TABLE IF NOT EXISTS daily_counts (
+                date TEXT NOT NULL,
+                channel_id INTEGER NOT NULL,
+                thread_id INTEGER,
+                count INTEGER NOT NULL,
+                PRIMARY KEY (date, channel_id, thread_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS daily_user_events (
+                date TEXT PRIMARY KEY,
+                join_count INTEGER NOT NULL,
+                leave_count INTEGER NOT NULL,
+                ban_count INTEGER NOT NULL
             );
             """
             )
@@ -64,14 +79,14 @@ class Database:
 
         • Any existing row for *member_id + role_id* is deleted first, so each user/role
           pair can appear only once in the table.
-        • Returns the primary‑key ID of the new row.
+        • Returns the primary-key ID of the new row.
         """
-        unban_str = unban_time.astimezone(timezone.utc).replace(tzinfo=None).isoformat()
+        unban_str = self.sanitize_datetime(unban_time)
 
         with self.get_connection() as conn:
             cur = conn.cursor()
 
-            # one‑row‑per‑user/role policy
+            # one-row-per-user/role policy
             cur.execute(
                 "DELETE FROM scheduled_bans WHERE member_id = ? AND role_id = ?",
                 (member_id, role_id),
@@ -217,3 +232,87 @@ class Database:
             added = True
         self.update_channel_category(category, channels)
         return added
+
+    # Daily Counts Operations
+
+    def increment_daily_count(self, channel_id: int, thread_id: int | None) -> None:
+        """
+        Increments the message count for the given channel/thread for today's date.
+        Uses an UPSERT to create or update a single row per (date, channel, thread).
+        """
+        date_str = datetime.now(timezone.utc).date().isoformat()
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO daily_counts (date, channel_id, thread_id, count)
+                VALUES (?, ?, ?, 1)
+                ON CONFLICT(date, channel_id, thread_id)
+                DO UPDATE SET count = count + 1;
+                """,
+                (date_str, channel_id, thread_id),
+            )
+            conn.commit()
+
+    def get_daily_counts(self, target_date: date) -> list[tuple[int, int | None, int]]:
+        """
+        Retrieves the message counts per channel/thread for the given calendar date.
+        Returns a list of tuples: (channel_id, thread_id, count).
+        """
+        date_str = target_date.isoformat()
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT channel_id, thread_id, count
+                FROM daily_counts
+                WHERE date = ?
+                ORDER BY count DESC;
+                """,
+                (date_str,),
+            )
+            return cur.fetchall()
+
+    # Daily User Events Operations
+
+    def increment_daily_user_event(self, event: str) -> None:
+        """
+        Increments the join/leave/ban counter for today's date.
+        event must be one of 'join', 'leave', 'ban'.
+        """
+        if event not in ("join", "leave", "ban"):
+            raise ValueError(f"Unknown event type: {event}")
+        date_str = datetime.now(timezone.utc).date().isoformat()
+        col_map = {"join": "join_count", "leave": "leave_count", "ban": "ban_count"}
+        join_val = 1 if event == "join" else 0
+        leave_val = 1 if event == "leave" else 0
+        ban_val = 1 if event == "ban" else 0
+        col = col_map[event]
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                INSERT INTO daily_user_events (date, join_count, leave_count, ban_count)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(date) DO UPDATE SET {col} = {col} + 1;
+                """,
+                (date_str, join_val, leave_val, ban_val),
+            )
+            conn.commit()
+
+    def get_daily_user_events(self, target_date: date) -> dict[str, int]:
+        """
+        Retrieves the join/leave/ban counts for the given calendar date.
+        Returns a dict with keys 'join', 'leave', 'ban' (0 if no row).
+        """
+        date_str = target_date.isoformat()
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT join_count, leave_count, ban_count FROM daily_user_events WHERE date = ?",
+                (date_str,),
+            )
+            row = cur.fetchone()
+            if row:
+                return {"join": row[0], "leave": row[1], "ban": row[2]}
+            return {"join": 0, "leave": 0, "ban": 0}

@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta, timezone
-from collections import Counter, defaultdict
 import asyncio as aio
 
 import discord
@@ -25,89 +24,10 @@ class DailyCounter(commands.Cog, name="daily_counter"):
     def __init__(self, bot: DiscordBot) -> None:
         self.bot = bot
         self.subconfig_data: dict = self.bot.config["cogs"][self.__cog_name__.lower()]
-        self.global_msg: Counter = Counter()
-        # {parent_channel_id: Counter({thread_id: msg_count})}
-        self.thread_msg: defaultdict = defaultdict(Counter)
-        self.daily_usr: Counter = Counter({"join": 0, "leave": 0, "ban": 0})
-        self.count_start: datetime = datetime.now(timezone.utc)
 
     def cog_unload(self) -> None:
         """Stops the daily summary loop when the cog is unloaded."""
         self.post_dailies.cancel()
-
-    @staticmethod
-    def _get_thread_name(guild, thread_id: int) -> str:
-        thread = guild.get_thread(thread_id)
-        if not thread:
-            return f"Thread {thread_id}"
-        name = thread.name
-        return name if len(name) <= 32 else name[:29] + "..."
-
-    def create_embed(self) -> discord.Embed:
-        """Creates a structured embed for daily report summaries with a dynamic header.
-
-        The header displays either:
-          - "Since bot restart (<relative time>)" if the bot restarted after midnight UTC, or
-          - "Since <full timestamp>" for the most recent midnight UTC.
-        """
-        guild = self.bot.get_current_guild()
-
-        now = datetime.now(timezone.utc)
-        last_midnight = datetime.combine(
-            now.date(), datetime.min.time(), tzinfo=timezone.utc
-        )
-        if self.count_start > last_midnight:
-            header_text = (
-                f"since restart ({discord.utils.format_dt(self.count_start, 'R')})"
-            )
-        else:
-            header_text = f"since {discord.utils.format_dt(last_midnight, 'F')}"
-
-        channel_totals: dict[int, int] = dict(self.global_msg)
-        for parent_id, threads in self.thread_msg.items():
-            channel_totals[parent_id] = channel_totals.get(parent_id, 0) + sum(
-                threads.values()
-            )
-
-        lines: list[str] = []
-        for chan_id, count in sorted(
-            channel_totals.items(), key=lambda t: t[1], reverse=True
-        ):
-            channel = guild.get_channel(chan_id)
-            if not channel:
-                line = f"`{chan_id}`: **{count}** (channel removed)"
-            else:
-                line = f"`{channel}`: **{count}**"
-                if chan_id in self.thread_msg:
-                    thread_lines = [
-                        f"    • `{self._get_thread_name(guild, thread_id)}`: **{tcount}**"
-                        for thread_id, tcount in self.thread_msg[chan_id].most_common()
-                        if guild.get_thread(thread_id)
-                    ]
-                    if thread_lines:
-                        line += "\n" + "\n".join(thread_lines)
-            lines.append(line)
-
-        total_messages = sum(channel_totals.values())
-        if total_messages:
-            lines.append(f"`All channels`: **{total_messages}**")
-
-        msg_counts = "\n".join(lines) if lines else "No messages recorded."
-        embed = self.bot.create_embed(
-            color=discord.Color.blue(),
-            description=f"**Message counts {header_text}:**\n{msg_counts}",
-            timestamp=now,
-        )
-        embed.set_author(name="Daily Report", icon_url=self.bot.user.display_avatar.url)
-        embed.add_field(name="Total Messages:", value=str(total_messages))
-        embed.add_field(name="Current Users:", value=str(guild.member_count))
-        embed.add_field(name="Users Gained:", value=self.daily_usr.get("join", 0))
-        embed.add_field(
-            name="Users Lost:",
-            value=self.daily_usr.get("leave", 0) - self.daily_usr.get("ban", 0),
-        )
-        embed.add_field(name="Users Banned:", value=self.daily_usr.get("ban", 0))
-        return embed
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -117,17 +37,17 @@ class DailyCounter(commands.Cog, name="daily_counter"):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
         """Increments join count when a user joins."""
-        self.daily_usr["join"] += 1
+        self.bot.db.increment_daily_user_event("join")
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
         """Increments leave count when a user leaves."""
-        self.daily_usr["leave"] += 1
+        self.bot.db.increment_daily_user_event("leave")
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild: discord.Guild, user: discord.User) -> None:
         """Increments ban count when a user is banned."""
-        self.daily_usr["ban"] += 1
+        self.bot.db.increment_daily_user_event("ban")
 
     @commands.Cog.listener()
     async def on_message(self, msg: discord.Message) -> None:
@@ -136,14 +56,20 @@ class DailyCounter(commands.Cog, name="daily_counter"):
             return
 
         if isinstance(msg.channel, discord.Thread):
-            if msg.channel.parent_id:
-                self.thread_msg[msg.channel.parent_id][msg.channel.id] += 1
+            # Thread message: increment for parent channel/thread pair
+            parent_id = msg.channel.parent_id or msg.channel.id
+            self.bot.db.increment_daily_count(parent_id, msg.channel.id)
         else:
-            self.global_msg[msg.channel.id] += 1
+            # Regular channel message
+            self.bot.db.increment_daily_count(msg.channel.id, None)
 
     @tasks.loop(hours=24)
     async def post_dailies(self) -> None:
         """Posts daily stats at midnight UTC."""
+        # Compute the date for the day that just ended
+        now = datetime.now(timezone.utc)
+        report_date = (now - timedelta(days=1)).date()
+
         log_channel_id = self.bot.config["bot"].get("modlog_channel_id")
         if not log_channel_id:
             return
@@ -153,12 +79,7 @@ class DailyCounter(commands.Cog, name="daily_counter"):
             return
 
         admin_mention = f'<@{self.subconfig_data["ping_user_id"]}>'
-        embed = self.create_embed()
-
-        # Clear all counters after posting
-        self.global_msg.clear()
-        self.thread_msg.clear()
-        self.daily_usr.clear()
+        embed = self.create_embed(report_date)
 
         await log_channel.send(admin_mention, embed=embed)
 
@@ -183,6 +104,9 @@ class DailyCounter(commands.Cog, name="daily_counter"):
     @app_commands.default_permissions(manage_roles=True)
     async def force_daily_post(self, interaction: discord.Interaction) -> None:
         """Allows an admin to manually trigger the daily report."""
+        # Always report on the previous calendar day
+        report_date = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+
         log_channel_id = self.bot.config["bot"].get("modlog_channel_id")
         if not log_channel_id:
             await interaction.response.send_message(
@@ -197,8 +121,7 @@ class DailyCounter(commands.Cog, name="daily_counter"):
             )
             return
 
-        admin_mention = f'<@{self.subconfig_data["ping_user_id"]}>'
-        embed = self.create_embed()
+        embed = self.create_embed(report_date)
         await log_channel.send(embed=embed)
         await interaction.response.send_message("Daily report posted.", ephemeral=True)
 
@@ -213,6 +136,64 @@ class DailyCounter(commands.Cog, name="daily_counter"):
             )
             return
         raise error
+
+    def create_embed(self, report_date: datetime.date) -> discord.Embed:
+        """Creates a structured embed for daily report summaries for a given date."""
+        guild = self.bot.get_current_guild()
+        now = datetime.now(timezone.utc)
+
+        # Header shows the calendar date being reported
+        header_text = report_date.isoformat()
+
+        # Fetch message counts and user events for that date
+        counts = self.bot.db.get_daily_counts(report_date)
+        events = self.bot.db.get_daily_user_events(report_date)
+
+        # Aggregate totals per channel and per thread
+        channel_totals: dict[int, int] = {}
+        thread_msg: dict[int, dict[int, int]] = {}
+        for chan_id, thr_id, cnt in counts:
+            channel_totals[chan_id] = channel_totals.get(chan_id, 0) + cnt
+            if thr_id is not None:
+                thread_msg.setdefault(chan_id, {})[thr_id] = cnt
+
+        # Build the per-channel lines
+        lines: list[str] = []
+        for chan_id, count in sorted(
+            channel_totals.items(), key=lambda t: t[1], reverse=True
+        ):
+            channel = guild.get_channel(chan_id)
+            name = f"`{chan_id}`" if not channel else f"`{channel.name}`"
+            line = f"{name}: **{count}**"
+            # Add threads under the channel if any
+            if chan_id in thread_msg:
+                for thread_id, tcount in thread_msg[chan_id].items():
+                    thread = guild.get_thread(thread_id)
+                    tname = thread.name if thread else str(thread_id)
+                    line += f"\n    • `{tname}`: **{tcount}**"
+            lines.append(line)
+
+        total_messages = sum(channel_totals.values())
+        if total_messages:
+            lines.append(f"`All channels`: **{total_messages}**")
+
+        msg_counts = "\n".join(lines) if lines else "No messages recorded."
+
+        embed = self.bot.create_embed(
+            color=discord.Color.blue(),
+            description=f"**Message counts for {header_text}:**\n{msg_counts}",
+            timestamp=now,
+        )
+        embed.set_author(name="Daily Report", icon_url=self.bot.user.display_avatar.url)
+        embed.add_field(name="Total Messages:", value=str(total_messages))
+        embed.add_field(name="Current Users:", value=str(guild.member_count))
+        embed.add_field(name="Users Gained:", value=str(events.get("join", 0)))
+        # leave minus ban = net leaves
+        embed.add_field(
+            name="Users Lost:", value=str(events.get("leave", 0) - events.get("ban", 0))
+        )
+        embed.add_field(name="Users Banned:", value=str(events.get("ban", 0)))
+        return embed
 
 
 async def setup(bot: DiscordBot) -> None:
