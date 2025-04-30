@@ -1,5 +1,5 @@
 # daily_counter.py
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 import asyncio as aio
 
 import discord
@@ -26,14 +26,14 @@ class DailyCounter(commands.Cog, name="daily_counter"):
         self.bot = bot
         self.subconfig_data: dict = self.bot.config["cogs"][self.__cog_name__.lower()]
 
+    async def cog_load(self) -> None:
+        """Starts the daily summary loop once the cog is loaded."""
+        if not self.post_dailies.is_running():
+            self.post_dailies.start()
+
     def cog_unload(self) -> None:
         """Stops the daily summary loop when the cog is unloaded."""
         self.post_dailies.cancel()
-
-    @commands.Cog.listener()
-    async def on_ready(self) -> None:
-        if not self.post_dailies.is_running():
-            self.post_dailies.start()
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
@@ -64,7 +64,7 @@ class DailyCounter(commands.Cog, name="daily_counter"):
             # Regular channel message
             self.bot.db.increment_daily_count(msg.channel.id, None)
 
-    @tasks.loop(hours=24)
+    @tasks.loop(time=time(hour=0, minute=0, second=0, tzinfo=timezone.utc))
     async def post_dailies(self) -> None:
         """Posts daily stats at midnight UTC."""
         # Compute the date for the day that just ended
@@ -83,20 +83,6 @@ class DailyCounter(commands.Cog, name="daily_counter"):
         embed = self.create_embed(report_date)
 
         await log_channel.send(admin_mention, embed=embed)
-
-    @post_dailies.before_loop
-    async def post_dailies_start_delay(self) -> None:
-        """Delays the start of the daily report until the next midnight UTC."""
-        await self.bot.wait_until_ready()
-        self.bot.log(
-            message=response_bank.process_dailies_complete,
-            name="DailyCounter.post_dailies_start_delay",
-        )
-        now = datetime.now(timezone.utc)
-        next_midnight = datetime.combine(
-            now.date() + timedelta(1), datetime.min.time(), tzinfo=timezone.utc
-        )
-        await aio.sleep((next_midnight - now).total_seconds())
 
     @app_commands.guild_only
     @app_commands.command(
