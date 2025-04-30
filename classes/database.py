@@ -3,6 +3,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
+
 class Database:
     def __init__(self, db_path: str | None = None):
         if not db_path:
@@ -23,7 +24,8 @@ class Database:
         All datetime values are stored in UTC as naive ISO-formatted strings.
         """
         with self.get_connection() as conn:
-            conn.executescript("""
+            conn.executescript(
+                """
             CREATE TABLE IF NOT EXISTS scheduled_bans (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 unban_time TEXT,   -- ISO-formatted UTC datetime string (naive)
@@ -40,7 +42,8 @@ class Database:
             category TEXT PRIMARY KEY,
             channels TEXT    -- JSON-encoded list of channel IDs
             );
-            """)
+            """
+            )
             conn.commit()
 
     @contextmanager
@@ -53,7 +56,9 @@ class Database:
 
     # Scheduled Bans Operations
 
-    def add_scheduled_ban(self, unban_time: datetime, member_id: int, role_id: int) -> int:
+    def add_scheduled_ban(
+        self, unban_time: datetime, member_id: int, role_id: int
+    ) -> int:
         """
         Adds (or replaces) a scheduled ban.
 
@@ -85,7 +90,7 @@ class Database:
         with self.get_connection() as conn:
             conn.execute(
                 "DELETE FROM scheduled_bans WHERE member_id = ? AND role_id = ?",
-                (member_id, role_id)
+                (member_id, role_id),
             )
             conn.commit()
 
@@ -101,7 +106,7 @@ class Database:
             cur = conn.cursor()
             cur.execute(
                 "SELECT id, unban_time, member_id, role_id FROM scheduled_bans WHERE unban_time <= ?",
-                (current_str,)
+                (current_str,),
             )
             return cur.fetchall()
 
@@ -138,7 +143,7 @@ class Database:
         with self.get_connection() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO member_last_roles (member_id, last_roles) VALUES (?, ?)",
-                (member_id, roles_json)
+                (member_id, roles_json),
             )
             conn.commit()
 
@@ -151,7 +156,7 @@ class Database:
             cur = conn.cursor()
             cur.execute(
                 "SELECT last_roles FROM member_last_roles WHERE member_id = ?",
-                (member_id,)
+                (member_id,),
             )
             row = cur.fetchone()
             if row and row[0]:
@@ -175,7 +180,10 @@ class Database:
         """
         with self.get_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT channels FROM channel_categories WHERE category = ?", (category,))
+            cur.execute(
+                "SELECT channels FROM channel_categories WHERE category = ?",
+                (category,),
+            )
             row = cur.fetchone()
             if row and row[0]:
                 return json.loads(row[0])
@@ -190,7 +198,7 @@ class Database:
         with self.get_connection() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO channel_categories (category, channels) VALUES (?, ?)",
-                (category, channels_json)
+                (category, channels_json),
             )
             conn.commit()
 
