@@ -72,6 +72,8 @@ class BanManager(commands.Cog, name="ban_manager"):
             return count
 
         for ch in guild.text_channels:
+            # TODO: remove this log
+            print(f"Checking channel {ch.name} for ban roles...")
             # 1. Thread-only ban roles: name contains "ban", denies threads but allows channel
             thread_roles = [
                 r
@@ -240,6 +242,10 @@ class BanManager(commands.Cog, name="ban_manager"):
         if isinstance(interaction.channel, discord.Thread):
             parent = interaction.channel.parent
             # prefer thread-specific ban, fallback to full ban
+            # TODO: remove this log
+            print(f"Checking thread ban for {parent.name}...")
+            print(f"Thread ban role: {self.thread_ban_map.get(parent.id)}")
+            print(f"Channel ban role: {self.channel_ban_map.get(parent.id)}")
             channel_ban_role = self.thread_ban_map.get(
                 parent.id
             ) or self.channel_ban_map.get(parent.id)
