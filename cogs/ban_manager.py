@@ -71,7 +71,15 @@ class BanManager(commands.Cog, name="ban_manager"):
                     count += 1
             return count
 
-        for ch in guild.text_channels:
+        # For some unholy reason, text_channels does not include forums
+        text_channels = [
+            ch
+            for ch in guild.channels
+            if isinstance(ch, discord.TextChannel)
+            or isinstance(ch, discord.ForumChannel)
+        ]
+
+        for ch in text_channels:
             # TODO: remove this log
             print(f"Checking channel {ch.name} for ban roles...")
             # 1. Thread-only ban roles: name contains "ban", denies threads but allows channel
