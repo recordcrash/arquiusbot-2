@@ -80,8 +80,6 @@ class BanManager(commands.Cog, name="ban_manager"):
         ]
 
         for ch in text_channels:
-            # TODO: remove this log
-            print(f"Checking channel {ch.name} for ban roles...")
             # 1. Thread-only ban roles: name contains "ban", denies threads but allows channel
             thread_roles = [
                 r
@@ -109,8 +107,6 @@ class BanManager(commands.Cog, name="ban_manager"):
                     ban_roles, key=lambda r: (breadth(r, "send_messages"), -r.position)
                 )
                 self.channel_ban_map[ch.id] = best
-
-        self.bot.log(message="BanManager: Ban Maps rebuilt.", name="BanManager")
 
     def cog_unload(self) -> None:
         self.manage_mutelist.cancel()
@@ -250,10 +246,6 @@ class BanManager(commands.Cog, name="ban_manager"):
         if isinstance(interaction.channel, discord.Thread):
             parent = interaction.channel.parent
             # prefer thread-specific ban, fallback to full ban
-            # TODO: remove this log
-            print(f"Checking thread ban for {parent.name}...")
-            print(f"Thread ban role: {self.thread_ban_map.get(parent.id)}")
-            print(f"Channel ban role: {self.channel_ban_map.get(parent.id)}")
             channel_ban_role = self.thread_ban_map.get(
                 parent.id
             ) or self.channel_ban_map.get(parent.id)
