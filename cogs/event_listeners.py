@@ -357,17 +357,26 @@ class EventListeners(commands.Cog, name="events"):
         added = [r for r in after.roles if r not in before.roles]
         removed = [r for r in before.roles if r not in after.roles]
         for role in added:
-            embed = discord.Embed(
-                title="Role Added", color=discord.Color.green(), timestamp=now
-            )
+            embed = discord.Embed(color=discord.Color.green(), timestamp=now)
             embed.description = f"{after.mention} was given **{role.name}**"
-            await minor_ch.send(embed=embed)
+            # If role name contains the substring "-ban", send to modlog instead
+            if "-ban" in role.name.lower():
+                embed.title = "Role Added (Ban)"
+                await ch.send(embed=embed)
+            else:
+                embed.title = "Role Added"
+                await minor_ch.send(embed=embed)
         for role in removed:
             embed = discord.Embed(
                 title="Role Removed", color=discord.Color.red(), timestamp=now
             )
             embed.description = f"{after.mention} lost **{role.name}**"
-            await minor_ch.send(embed=embed)
+            if "-ban" in role.name.lower():
+                embed.title = "Role Removed (Ban)"
+                await ch.send(embed=embed)
+            else:
+                embed.title = "Role Removed"
+                await minor_ch.send(embed=embed)
 
         # Timeout (mute) applied / removed
         if before.timed_out_until is None and after.timed_out_until is not None:
