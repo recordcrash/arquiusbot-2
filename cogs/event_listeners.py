@@ -475,8 +475,6 @@ class EventListeners(commands.Cog, name="events"):
                 files.append(file)
         if before.name != after.name:
             changes.append(("Name", f"{before.name} → {after.name}", False))
-        if before.position != after.position:
-            changes.append(("Position", f"{before.position} → {after.position}", True))
         if before.category != after.category:
             changes.append(
                 (
