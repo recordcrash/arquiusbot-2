@@ -490,7 +490,7 @@ class BanManager(commands.Cog, name="ban_manager"):
         length: str,
         reason: str = "None specified.",
     ) -> None:
-        """Applies the all-ban role to a user."""
+        """Apply the all-ban role to a user."""
         await interaction.response.defer()
         try:
             duration = self._parse_length(length)
@@ -501,8 +501,7 @@ class BanManager(commands.Cog, name="ban_manager"):
             )
             return
 
-        guild = interaction.guild
-        role = discord.utils.get(guild.roles, name="all-ban")
+        role = discord.utils.get(interaction.guild.roles, name="all-ban")
         if not role:
             await interaction.followup.send(
                 "Error: `all-ban` role not found.", ephemeral=True
@@ -527,18 +526,23 @@ class BanManager(commands.Cog, name="ban_manager"):
         embed = discord.Embed(
             color=discord.Color.red(),
             timestamp=datetime.now(timezone.utc),
-            description=f"{member.mention} has been **all-banned**",
+            description=f"{member.mention} has been banned in **all channels**",
         )
-        embed.add_field(name="Duration", value=until)
-        embed.add_field(name="Reason", value=reason)
-        embed.add_field(name="User ID", value=str(member.id))
+        embed.add_field(
+            name="Duration:",
+            value=f"{duration} hour(s)" if duration else "Until further notice",
+        )
+        embed.add_field(name="Reason:", value=reason)
+        embed.add_field(name="User ID:", value=str(member.id))
         embed.set_author(
             name=f"{interaction.user} issued all-ban:",
             icon_url=interaction.user.display_avatar.url,
         )
         await self._log_mod(embed)
         await interaction.followup.send(
-            f"{member.mention} all-banned {until}.", ephemeral=True
+            response_bank.channel_ban_confirm.format(
+                member=member.mention, until=until, reason=reason
+            ),
         )
 
     @all_.command(name="unban", description="Remove the all-ban role.")
