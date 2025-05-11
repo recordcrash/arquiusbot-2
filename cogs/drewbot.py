@@ -124,9 +124,8 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         system_prompt = (
             self.system_prompt
             if not use_new_format
-            else "Don't hedge or save info for the next reply."
+            else "Never say 'later' or 'no', always answer in depth."
         )
-
         response_gen = openai_client.stream_response(
             model=model_id,
             label=label,
