@@ -103,7 +103,7 @@ class AIClient:
         self,
         model: str,
         label: str,
-        system_prompt: str,
+        system_prompt: str | None,
         prompt: str,
         prev_resp_id: str | None = None,
         temperature: float = 1.0,

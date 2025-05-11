@@ -116,11 +116,16 @@ class DrewBotCog(commands.Cog, name="drewbot"):
             server_emotes=self.server_emotes,
         )
 
-        real_prompt = self.botify_input_text(username=author.name, text=prompt)
+        # Ugly hack because multi-turn models use a different format from the others
+        use_new_format = label in ("4.1", "4.1 Nano")
+
+        real_prompt = self.botify_input_text(
+            username=author.name, text=prompt, use_new_format=use_new_format
+        )
         response_gen = openai_client.stream_response(
             model=model_id,
             label=label,
-            system_prompt=self.system_prompt,
+            system_prompt=None if use_new_format else self.system_prompt,
             prompt=real_prompt,
             prev_resp_id=prev_resp_id,
             temperature=temperature,
@@ -238,12 +243,16 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         """
         return self.choices
 
-    def botify_input_text(self, username: str, text: str) -> str:
+    def botify_input_text(
+        self, username: str, text: str, use_new_format: bool = False
+    ) -> str:
         """
         Given user input text, return the text formatted for Drewbot.
         """
         if username in [self.username, self.username_full]:
             username = "dirtbreadman"
+        if use_new_format:
+            return f"{username}: {text}"
         return f"{username}: {text}\n{self.username}: "
 
     @app_commands.command(
