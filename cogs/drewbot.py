@@ -118,14 +118,19 @@ class DrewBotCog(commands.Cog, name="drewbot"):
 
         # Ugly hack because multi-turn models use a different format from the others
         use_new_format = label in ("4.1", "4.1 Nano")
-
         real_prompt = self.botify_input_text(
             username=author.name, text=prompt, use_new_format=use_new_format
         )
+        system_prompt = (
+            self.system_prompt
+            if not use_new_format
+            else "Don't hedge or save info for the next reply."
+        )
+
         response_gen = openai_client.stream_response(
             model=model_id,
             label=label,
-            system_prompt=None if use_new_format else self.system_prompt,
+            system_prompt=system_prompt,
             prompt=real_prompt,
             prev_resp_id=prev_resp_id,
             temperature=temperature,
