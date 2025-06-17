@@ -105,7 +105,9 @@ class ModCommands(commands.Cog, name="mod_commands"):
             try:
                 user_id = int(user_str)
             except ValueError:
-                messages.append(f"D--> `{user_str}` is not a valid user ID.")
+                messages.append(
+                    f"D--> `{user_str}` is not a valid user ID (mentions/ID only, usernames won't work!)."
+                )
                 continue
 
             # Try to get the member from the guild, otherwise fetch the user.
@@ -121,7 +123,7 @@ class ModCommands(commands.Cog, name="mod_commands"):
                 await interaction.guild.ban(
                     user,
                     reason="Banned by anti-raid command.",
-                    delete_message_days=1,
+                    delete_message_seconds=3600,
                 )
                 banned_users.append(f"{user} (`{user_id}`)")
             except discord.Forbidden:
