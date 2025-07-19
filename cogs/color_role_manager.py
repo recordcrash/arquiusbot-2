@@ -9,6 +9,7 @@ from classes.response_bank import response_bank
 
 EmojiUnion = Union[discord.Emoji, discord.PartialEmoji, str]
 
+
 class ColorRoleManager(commands.Cog, name="color_role_manager"):
     """
     Manages self-assignable color roles based on predefined messages.
@@ -16,6 +17,7 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
     - The bot ensures the correct reactions are present on startup.
     - Users may only have ONE color role at a time.
     """
+
     def __init__(self, bot: DiscordBot) -> None:
         self.bot = bot
         self.subconfig_data: dict = self.bot.config["cogs"][self.__cog_name__.lower()]
@@ -114,7 +116,7 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
                 if emoji is None:
                     self.bot.log(
                         message=f"D--> Emoji for key {emoji_key} resolved to None. Skipping reaction addition for message {msg_id}",
-                        name="ColorRoleManager._ensure_reactions"
+                        name="ColorRoleManager._ensure_reactions",
                     )
                     continue
 
@@ -159,22 +161,24 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
                         )
                         await self._handle_reaction(msg, user, target_reaction)
 
-    async def _purge_color_roles(self, member: discord.Member, new_role: discord.Role) -> None:
-        """Remove any color role from the member except for the new one."""
-        all_role_ids = {role_id for msg in self.color_role_messages.values() for role_id in msg.values()}
-        for role in member.roles:
-            if str(role.id) in all_role_ids or role.name in all_role_ids:
-                if role.id != new_role.id:
-                    try:
-                        await member.remove_roles(role, reason=response_bank.role_only_one)
-                    except discord.HTTPException:
-                        pass
-
     async def _grant_role(self, member: discord.Member, role: discord.Role) -> bool:
-        """Grants the role to the member after purging other color roles."""
-        await self._purge_color_roles(member, role)
+        """Set the member’s roles to their non‑color roles plus the new color role in one edit."""
+        # Gather all configured color‑role identifiers (IDs or names as strings)
+        all_role_ids = {
+            str(rid)
+            for mapping in self.color_role_messages.values()
+            for rid in mapping.values()
+        }
+        # Keep any roles that aren’t in the color list
+        non_color_roles = [
+            r
+            for r in member.roles
+            if str(r.id) not in all_role_ids and r.name not in all_role_ids
+        ]
+        # Build the new role list and apply it in one go
+        new_roles = non_color_roles + [role]
         try:
-            await member.add_roles(role, reason=response_bank.role_reaction_added)
+            await member.edit(roles=new_roles, reason=response_bank.role_reaction_added)
             return True
         except discord.HTTPException:
             return False
@@ -226,10 +230,12 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
                 pass
             await self._remove_reaction(msg, reaction, member)
         else:
-            if await self._grant_role(member, role):
-                await self._remove_reaction(msg, reaction, member)
+            await self._grant_role(member, role)
+            await self._remove_reaction(msg, reaction, member)
 
-    def _get_member_from_payload(self, payload: discord.RawReactionActionEvent) -> Optional[discord.Member]:
+    def _get_member_from_payload(
+        self, payload: discord.RawReactionActionEvent
+    ) -> Optional[discord.Member]:
         channel = self.bot.get_channel(payload.channel_id)
         return channel.guild.get_member(payload.user_id) if channel else None
 
@@ -238,13 +244,18 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
         await self.cache_application_emojis()
         self.bot.log(
             message="ColorRoleManager on_ready: ensuring reactions",
-            name="ColorRoleManager.on_ready"
+            name="ColorRoleManager.on_ready",
         )
         await self._ensure_reactions()
 
     @commands.Cog.listener()
-    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
-        if str(payload.message_id) not in self.color_role_messages or payload.user_id == self.bot.user.id:
+    async def on_raw_reaction_add(
+        self, payload: discord.RawReactionActionEvent
+    ) -> None:
+        if (
+            str(payload.message_id) not in self.color_role_messages
+            or payload.user_id == self.bot.user.id
+        ):
             return
 
         member = self._get_member_from_payload(payload)
@@ -268,7 +279,9 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
             await self._handle_reaction(msg, member, reaction_obj)
 
     @commands.Cog.listener()
-    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
+    async def on_raw_reaction_remove(
+        self, payload: discord.RawReactionActionEvent
+    ) -> None:
         # If this reaction removal was triggered by our own action, ignore it.
         key = (payload.message_id, payload.user_id, str(payload.emoji))
         if key in self._ignore_removals:
@@ -282,7 +295,9 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
         role = self._get_role(payload.message_id, payload.emoji)
         if member and role:
             try:
-                await member.remove_roles(role, reason=response_bank.role_reaction_removed)
+                await member.remove_roles(
+                    role, reason=response_bank.role_reaction_removed
+                )
             except discord.HTTPException:
                 pass
 
@@ -312,10 +327,14 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
             if role:
                 roles.append(role)
         if not roles:
-            await interaction.response.send_message(response_bank.role_no_roles, ephemeral=True)
+            await interaction.response.send_message(
+                response_bank.role_no_roles, ephemeral=True
+            )
             return
         description = "\n".join(f"`{role.name}` (ID: {role.id})" for role in roles)
-        embed = self.bot.create_embed(title=response_bank.role_list, description=description)
+        embed = self.bot.create_embed(
+            title=response_bank.role_list, description=description
+        )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @role.command(name="add", description="Add a role to yourself.")
@@ -379,8 +398,10 @@ class ColorRoleManager(commands.Cog, name="color_role_manager"):
             )
             return
         await interaction.response.send_message(
-            response_bank.role_remove_success, ephemeral=True,
+            response_bank.role_remove_success,
+            ephemeral=True,
         )
+
 
 async def setup(bot: DiscordBot) -> None:
     await bot.add_cog(ColorRoleManager(bot))
