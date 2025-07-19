@@ -75,8 +75,9 @@ class BanManager(commands.Cog, name="ban_manager"):
         text_channels = [
             ch
             for ch in guild.channels
-            if isinstance(ch, discord.TextChannel)
-            or isinstance(ch, discord.ForumChannel)
+            if isinstance(
+                ch, (discord.TextChannel, discord.ForumChannel, discord.VoiceChannel)
+            )
         ]
 
         for ch in text_channels:
