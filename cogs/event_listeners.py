@@ -49,10 +49,14 @@ class EventListeners(commands.Cog, name="events"):
         self._recent_bans: dict[int, float] = defaultdict(float)
 
         # Threshold for total reactions on a bot message to trigger a ping
-        self.reaction_ping_threshold: int = 9
+        # TODO: change back
+        self.reaction_ping_threshold: int = 1
 
         # Tracks messages already reported so they are only pinged once
         self._reaction_pinged_messages: set[int] = set()
+
+        # Estimated total reactions per message id to reduce fetches
+        self._reaction_estimate: dict[int, int] = defaultdict(int)
 
     def _relative_ts(self, dt: datetime) -> str:
         """Returns a Discord relative timestamp for a datetime."""
@@ -522,41 +526,48 @@ class EventListeners(commands.Cog, name="events"):
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         """Pings a user when a bot message crosses the reaction threshold."""
-        # Ensure we have a guild text channel to look in
         channel = self.bot.get_channel(payload.channel_id)
-        if channel is None:
-            try:
-                channel = await self.bot.fetch_channel(payload.channel_id)
-            except discord.HTTPException:
-                return
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
             return
 
-        # Fetch the message to check author and totals
-        try:
-            message = await channel.fetch_message(payload.message_id)
-        except discord.NotFound:
-            return
-        except discord.HTTPException:
-            return
-
-        # Only for messages authored by this bot
-        if not message.author or message.author.id != self.bot.user.id:
-            return
+        mid = payload.message_id
 
         # Avoid duplicate notifications using memory, falling back to database
-        if message.id in self._reaction_pinged_messages:
+        if mid in self._reaction_pinged_messages:
             return
-        if self.bot.db.has_reaction_ping(message.id):
-            self._reaction_pinged_messages.add(message.id)
+        if self.bot.db.has_reaction_ping(mid):
+            self._reaction_pinged_messages.add(mid)
             return
 
-        # Sum all reaction counts on the message
-        total_reactions = sum(r.count for r in message.reactions)
-
-        # Require strictly greater than the threshold
-        if total_reactions <= self.reaction_ping_threshold:
-            return
+        # Seed from the real total once per message to avoid stale starts after restarts
+        if self._reaction_estimate.get(mid, 0) == 0:
+            try:
+                msg = await channel.fetch_message(mid)
+            except (discord.NotFound, discord.HTTPException):
+                return
+            if not msg.author or msg.author.id != self.bot.user.id:
+                return
+            real_total = sum(r.count for r in msg.reactions)
+            self._reaction_estimate[mid] = real_total
+            if real_total <= self.reaction_ping_threshold:
+                return
+            message = msg
+            total_reactions = real_total
+        else:
+            # Increment local estimate and only refetch when we think we crossed the threshold
+            self._reaction_estimate[mid] += 1
+            if self._reaction_estimate[mid] <= self.reaction_ping_threshold:
+                return
+            try:
+                message = await channel.fetch_message(mid)
+            except (discord.NotFound, discord.HTTPException):
+                return
+            if not message.author or message.author.id != self.bot.user.id:
+                return
+            total_reactions = sum(r.count for r in message.reactions)
+            self._reaction_estimate[mid] = total_reactions
+            if total_reactions <= self.reaction_ping_threshold:
+                return
 
         # Determine where to notify
         target_channel: discord.abc.MessageableChannel | None = None
