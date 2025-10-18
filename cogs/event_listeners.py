@@ -48,6 +48,12 @@ class EventListeners(commands.Cog, name="events"):
         # Tracks recent bans to avoid logging deleted messages (user_id -> timestamp)
         self._recent_bans: dict[int, float] = defaultdict(float)
 
+        # Threshold for total reactions on a bot message to trigger a ping
+        self.reaction_ping_threshold: int = 9
+
+        # Tracks messages already reported so they are only pinged once
+        self._reaction_pinged_messages: set[int] = set()
+
     def _relative_ts(self, dt: datetime) -> str:
         """Returns a Discord relative timestamp for a datetime."""
         # Ensure UTC
@@ -512,6 +518,93 @@ class EventListeners(commands.Cog, name="events"):
             color=discord.Color.red(),
             fields=[("Channel ID", str(channel.id), True)],
         )
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
+        """Pings a user when a bot message crosses the reaction threshold."""
+        # Ensure we have a guild text channel to look in
+        channel = self.bot.get_channel(payload.channel_id)
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(payload.channel_id)
+            except discord.HTTPException:
+                return
+        if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+            return
+
+        # Fetch the message to check author and totals
+        try:
+            message = await channel.fetch_message(payload.message_id)
+        except discord.NotFound:
+            return
+        except discord.HTTPException:
+            return
+
+        # Only for messages authored by this bot
+        if not message.author or message.author.id != self.bot.user.id:
+            return
+
+        # Avoid duplicate notifications using memory, falling back to database
+        if message.id in self._reaction_pinged_messages:
+            return
+        if self.bot.db.has_reaction_ping(message.id):
+            self._reaction_pinged_messages.add(message.id)
+            return
+
+        # Sum all reaction counts on the message
+        total_reactions = sum(r.count for r in message.reactions)
+
+        # Require strictly greater than the threshold
+        if total_reactions <= self.reaction_ping_threshold:
+            return
+
+        # Determine where to notify
+        target_channel: discord.abc.MessageableChannel | None = None
+        if self.modlog_channel_id:
+            target_channel = self.bot.get_channel(self.modlog_channel_id)
+        if target_channel is None:
+            target_channel = message.channel
+
+        # Build the mention and embed
+        ping_uid = self.subconfig_data.get("ping_user_id")
+        if not ping_uid:
+            return
+        admin_mention = f'<@{ping_uid}>'
+
+        now = datetime.now(timezone.utc)
+        embed = discord.Embed(
+            title="Reaction Threshold Reached",
+            description=f"Bot message in {message.channel.mention} exceeded {self.reaction_ping_threshold} reactions  • [Jump to Message]({message.jump_url})",
+            color=discord.Color.gold(),
+            timestamp=now,
+        )
+        embed.add_field(name="Total Reactions", value=str(total_reactions), inline=True)
+        embed.add_field(name="Message ID", value=str(message.id), inline=True)
+
+        try:
+            await target_channel.send(admin_mention, embed=embed)
+        except discord.Forbidden:
+            self.bot.log(
+                message=f"Forbidden to send threshold ping to {getattr(target_channel, 'id', 'unknown')}",
+                name="on_raw_reaction_add",
+            )
+        except discord.HTTPException as e:
+            self.bot.log(
+                message=f"HTTP error sending threshold ping: {e}",
+                name="on_raw_reaction_add",
+            )
+        else:
+            # Record success in memory and database
+            self._reaction_pinged_messages.add(message.id)
+            gid = message.guild.id if message.guild else None
+            self.bot.db.add_reaction_ping(
+                message_id=message.id,
+                channel_id=message.channel.id,
+                guild_id=gid,
+                ping_time=now,
+                total_reactions=total_reactions,
+                threshold=self.reaction_ping_threshold,
+            )
 
     @commands.Cog.listener()
     async def on_message(self, msg: discord.Message) -> None:

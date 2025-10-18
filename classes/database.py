@@ -57,6 +57,15 @@ class Database:
                 leave_count INTEGER NOT NULL,
                 ban_count INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS reaction_pings (
+                message_id INTEGER PRIMARY KEY,
+                channel_id INTEGER NOT NULL,
+                guild_id INTEGER,
+                pinged_at TEXT NOT NULL,
+                total_reactions INTEGER,
+                threshold INTEGER
+            );
             """
             )
             conn.commit()
@@ -316,3 +325,55 @@ class Database:
             if row:
                 return {"join": row[0], "leave": row[1], "ban": row[2]}
             return {"join": 0, "leave": 0, "ban": 0}
+
+    # Reaction Threshold Ping Operations
+
+    def add_reaction_ping(
+        self,
+        message_id: int,
+        channel_id: int,
+        guild_id: int | None,
+        *,
+        ping_time: datetime | None = None,
+        total_reactions: int | None = None,
+        threshold: int | None = None,
+    ) -> None:
+        """
+        Records that a message has triggered a reaction-threshold ping.
+
+        If a row with the same message_id already exists, this is a no-op.
+        """
+        ts = self.sanitize_datetime(ping_time or datetime.now(timezone.utc))
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO reaction_pings
+                    (message_id, channel_id, guild_id, pinged_at, total_reactions, threshold)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (message_id, channel_id, guild_id, ts, total_reactions, threshold),
+            )
+            conn.commit()
+
+    def has_reaction_ping(self, message_id: int) -> bool:
+        """
+        Returns True if the given message_id has already triggered a ping.
+        """
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT 1 FROM reaction_pings WHERE message_id = ? LIMIT 1",
+                (message_id,),
+            )
+            return cur.fetchone() is not None
+
+    def delete_reaction_ping(self, message_id: int) -> None:
+        """
+        Deletes a reaction ping record for the given message_id.
+        """
+        with self.get_connection() as conn:
+            conn.execute(
+                "DELETE FROM reaction_pings WHERE message_id = ?",
+                (message_id,),
+            )
+            conn.commit()
