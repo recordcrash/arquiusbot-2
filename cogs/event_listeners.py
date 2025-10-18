@@ -49,8 +49,7 @@ class EventListeners(commands.Cog, name="events"):
         self._recent_bans: dict[int, float] = defaultdict(float)
 
         # Threshold for total reactions on a bot message to trigger a ping
-        # TODO: change back
-        self.reaction_ping_threshold: int = 1
+        self.reaction_ping_threshold: int = 9
 
         # Tracks messages already reported so they are only pinged once
         self._reaction_pinged_messages: set[int] = set()
@@ -526,296 +525,95 @@ class EventListeners(commands.Cog, name="events"):
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         """Pings a user when a bot message crosses the reaction threshold."""
-        # entry log
-        try:
-            self.bot.log(
-                message=(
-                    f"on_raw_reaction_add: guild_id={payload.guild_id} "
-                    f"channel_id={payload.channel_id} message_id={payload.message_id} "
-                    f"user_id={payload.user_id} emoji={getattr(payload.emoji, 'name', str(payload.emoji))}"
-                ),
-                name="on_raw_reaction_add",
-            )
-        except Exception:
-            pass
-
-        # resolve channel from cache, fallback to fetch for debugging visibility
         channel = self.bot.get_channel(payload.channel_id)
-        if channel is None:
-            self.bot.log(
-                message=f"channel not in cache, attempting fetch_channel for id={payload.channel_id}",
-                name="on_raw_reaction_add",
-            )
-            try:
-                channel = await self.bot.fetch_channel(payload.channel_id)
-            except discord.HTTPException as e:
-                self.bot.log(
-                    message=f"fetch_channel failed for id={payload.channel_id} err={e}",
-                    name="on_raw_reaction_add",
-                )
-                return
-
-        self.bot.log(
-            message=f"resolved channel type={type(channel).__name__} id={getattr(channel, 'id', None)}",
-            name="on_raw_reaction_add",
-        )
-
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
-            self.bot.log(
-                message="channel is not TextChannel or Thread, returning",
-                name="on_raw_reaction_add",
-            )
             return
 
         mid = payload.message_id
 
-        # duplicate guard checks
+        # Avoid duplicate notifications using memory, falling back to database
         if mid in self._reaction_pinged_messages:
-            self.bot.log(
-                message=f"message {mid} already in in memory pinged set, returning",
-                name="on_raw_reaction_add",
-            )
             return
-
-        try:
-            already_pinged_db = self.bot.db.has_reaction_ping(mid)
-        except Exception as e:
-            self.bot.log(
-                message=f"database has_reaction_ping error for message {mid}: {e}",
-                name="on_raw_reaction_add",
-            )
-            already_pinged_db = False
-
-        if already_pinged_db:
+        if self.bot.db.has_reaction_ping(mid):
             self._reaction_pinged_messages.add(mid)
-            self.bot.log(
-                message=f"message {mid} already recorded in database, adding to memory and returning",
-                name="on_raw_reaction_add",
-            )
             return
 
-        estimate_before = self._reaction_estimate.get(mid, 0)
-        self.bot.log(
-            message=f"estimate before for message {mid} is {estimate_before} threshold={self.reaction_ping_threshold}",
-            name="on_raw_reaction_add",
-        )
-
-        message = None
-        total_reactions = 0
-
-        if estimate_before == 0:
-            # first time seeing reactions for this message, seed from server
-            self.bot.log(
-                message=f"first sighting for message {mid}, fetching message to seed total",
-                name="on_raw_reaction_add",
-            )
+        # Seed from the real total once per message to avoid stale starts after restarts
+        if self._reaction_estimate.get(mid, 0) == 0:
             try:
                 msg = await channel.fetch_message(mid)
-            except discord.NotFound:
-                self.bot.log(
-                    message=f"fetch_message not found for message {mid}",
-                    name="on_raw_reaction_add",
-                )
+            except (discord.NotFound, discord.HTTPException):
                 return
-            except discord.HTTPException as e:
-                self.bot.log(
-                    message=f"fetch_message http error for message {mid}: {e}",
-                    name="on_raw_reaction_add",
-                )
+            if not msg.author or msg.author.id != self.bot.user.id:
                 return
-
-            bot_id = getattr(self.bot.user, "id", None)
-            author_id = getattr(msg.author, "id", None)
-            self.bot.log(
-                message=f"fetched message author_id={author_id} bot_id={bot_id}",
-                name="on_raw_reaction_add",
-            )
-
-            if not msg.author or author_id != bot_id:
-                self.bot.log(
-                    message=f"message {mid} not authored by bot, returning",
-                    name="on_raw_reaction_add",
-                )
+            real_total = sum(r.count for r in msg.reactions)
+            self._reaction_estimate[mid] = real_total
+            if real_total <= self.reaction_ping_threshold:
                 return
-
-            # compute real total and record per emoji breakdown
-            total_reactions = sum(r.count for r in msg.reactions)
-            for r in msg.reactions:
-                try:
-                    em = getattr(r.emoji, "name", str(r.emoji))
-                except Exception:
-                    em = str(r.emoji)
-                self.bot.log(
-                    message=f"message {mid} reaction breakdown emoji={em} count={r.count}",
-                    name="on_raw_reaction_add",
-                )
-
-            self._reaction_estimate[mid] = total_reactions
-            self.bot.log(
-                message=f"seeded estimate for message {mid} total={total_reactions}",
-                name="on_raw_reaction_add",
-            )
-
-            if total_reactions <= self.reaction_ping_threshold:
-                self.bot.log(
-                    message=f"total {total_reactions} not above threshold {self.reaction_ping_threshold}, returning",
-                    name="on_raw_reaction_add",
-                )
-                return
-
             message = msg
+            total_reactions = real_total
         else:
-            # increment local estimate, then confirm with a fetch when we think we crossed
-            new_estimate = estimate_before + 1
-            self._reaction_estimate[mid] = new_estimate
-            self.bot.log(
-                message=f"incremented estimate for message {mid} to {new_estimate}",
-                name="on_raw_reaction_add",
-            )
-            if new_estimate <= self.reaction_ping_threshold:
-                self.bot.log(
-                    message=f"estimate {new_estimate} not above threshold {self.reaction_ping_threshold}, returning",
-                    name="on_raw_reaction_add",
-                )
+            # Increment local estimate and only refetch when we think we crossed the threshold
+            self._reaction_estimate[mid] += 1
+            if self._reaction_estimate[mid] <= self.reaction_ping_threshold:
                 return
-
             try:
                 message = await channel.fetch_message(mid)
-            except discord.NotFound:
-                self.bot.log(
-                    message=f"confirm fetch not found for message {mid}",
-                    name="on_raw_reaction_add",
-                )
+            except (discord.NotFound, discord.HTTPException):
                 return
-            except discord.HTTPException as e:
-                self.bot.log(
-                    message=f"confirm fetch http error for message {mid}: {e}",
-                    name="on_raw_reaction_add",
-                )
+            if not message.author or message.author.id != self.bot.user.id:
                 return
-
-            bot_id = getattr(self.bot.user, "id", None)
-            author_id = getattr(message.author, "id", None)
-            self.bot.log(
-                message=f"confirm fetched message author_id={author_id} bot_id={bot_id}",
-                name="on_raw_reaction_add",
-            )
-
-            if not message.author or author_id != bot_id:
-                self.bot.log(
-                    message=f"confirm message {mid} not authored by bot, returning",
-                    name="on_raw_reaction_add",
-                )
-                return
-
             total_reactions = sum(r.count for r in message.reactions)
-            for r in message.reactions:
-                try:
-                    em = getattr(r.emoji, "name", str(r.emoji))
-                except Exception:
-                    em = str(r.emoji)
-                self.bot.log(
-                    message=f"message {mid} confirm breakdown emoji={em} count={r.count}",
-                    name="on_raw_reaction_add",
-                )
-
             self._reaction_estimate[mid] = total_reactions
-            self.bot.log(
-                message=f"updated estimate after confirm for message {mid} total={total_reactions}",
-                name="on_raw_reaction_add",
-            )
-
             if total_reactions <= self.reaction_ping_threshold:
-                self.bot.log(
-                    message=f"confirmed total {total_reactions} not above threshold {self.reaction_ping_threshold}, returning",
-                    name="on_raw_reaction_add",
-                )
                 return
 
-        # choose target channel
-        target_channel = None
+        # Determine where to notify
+        target_channel: discord.abc.MessageableChannel | None = None
         if self.modlog_channel_id:
             target_channel = self.bot.get_channel(self.modlog_channel_id)
         if target_channel is None:
             target_channel = message.channel
 
-        self.bot.log(
-            message=f"target channel id={getattr(target_channel, 'id', None)} for message {mid}",
-            name="on_raw_reaction_add",
-        )
-
-        # mention user to ping
-        ping_uid = self.bot.config["cogs"]["daily_counter"].get("ping_user_id")
-        self.bot.log(
-            message=f"ping_user_id from subconfig is {ping_uid}",
-            name="on_raw_reaction_add",
-        )
+        # Build the mention and embed
+        ping_uid = self.bot.config["cogs"]["daily_counter"]["ping_user_id"]
         if not ping_uid:
-            self.bot.log(
-                message="no ping_user_id configured, returning",
-                name="on_raw_reaction_add",
-            )
             return
         admin_mention = f'<@{ping_uid}>'
 
-        # build and send
-        now_dt = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
         embed = discord.Embed(
             title="Reaction Threshold Reached",
-            description=(
-                f"Bot message in {message.channel.mention} exceeded {self.reaction_ping_threshold} reactions  • "
-                f"[Jump to Message]({message.jump_url})"
-            ),
+            description=f"Bot message in {message.channel.mention} exceeded {self.reaction_ping_threshold} reactions  • [Jump to Message]({message.jump_url})",
             color=discord.Color.gold(),
-            timestamp=now_dt,
+            timestamp=now,
         )
         embed.add_field(name="Total Reactions", value=str(total_reactions), inline=True)
         embed.add_field(name="Message ID", value=str(message.id), inline=True)
 
-        self.bot.log(
-            message=f"sending ping for message {mid} total={total_reactions} threshold={self.reaction_ping_threshold}",
-            name="on_raw_reaction_add",
-        )
         try:
             await target_channel.send(admin_mention, embed=embed)
         except discord.Forbidden:
             self.bot.log(
-                message="send forbidden when delivering ping",
+                message=f"Forbidden to send threshold ping to {getattr(target_channel, 'id', 'unknown')}",
                 name="on_raw_reaction_add",
             )
-            return
         except discord.HTTPException as e:
             self.bot.log(
-                message=f"send http error when delivering ping: {e}",
+                message=f"HTTP error sending threshold ping: {e}",
                 name="on_raw_reaction_add",
             )
-            return
-
-        # record success
-        self._reaction_pinged_messages.add(message.id)
-        self.bot.log(
-            message=f"added message {mid} to in memory pinged set",
-            name="on_raw_reaction_add",
-        )
-
-        try:
+        else:
+            # Record success in memory and database
+            self._reaction_pinged_messages.add(message.id)
             gid = message.guild.id if message.guild else None
             self.bot.db.add_reaction_ping(
                 message_id=message.id,
                 channel_id=message.channel.id,
                 guild_id=gid,
-                ping_time=now_dt,
+                ping_time=now,
                 total_reactions=total_reactions,
                 threshold=self.reaction_ping_threshold,
-            )
-            self.bot.log(
-                message=f"recorded reaction ping in database for message {mid}",
-                name="on_raw_reaction_add",
-            )
-        except Exception as e:
-            self.bot.log(
-                message=f"database add_reaction_ping error for message {mid}: {e}",
-                name="on_raw_reaction_add",
             )
 
     @commands.Cog.listener()
