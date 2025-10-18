@@ -745,7 +745,7 @@ class EventListeners(commands.Cog, name="events"):
         )
 
         # mention user to ping
-        ping_uid = self.subconfig_data.get("ping_user_id")
+        ping_uid = self.bot.config["cogs"]["daily_counter"].get("ping_user_id")
         self.bot.log(
             message=f"ping_user_id from subconfig is {ping_uid}",
             name="on_raw_reaction_add",
