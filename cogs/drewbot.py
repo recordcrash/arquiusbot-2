@@ -265,7 +265,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
     @app_commands.describe(
         prompt="Your message",
         model="Select a model (default is the first in the list)",
-        temperature="Optional: Set the response temperature (0-1.111, default is 0.7)",
+        temperature="Optional: Set the response temperature (0-1.111, default is 0.85)",
     )
     @app_commands.autocomplete(model=model_autocomplete)
     async def chat(
