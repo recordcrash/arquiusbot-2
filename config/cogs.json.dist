@@ -49,7 +49,7 @@
             "id": "id-on-chatgpt"
           }
         ],
-        "base_temperature": 1.0,
+        "base_temperature": 0.85,
         "censored_words": ["pillweef"],
         "censor_character": "*",
         "system_prompt": "You are...",

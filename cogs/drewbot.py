@@ -115,22 +115,21 @@ class DrewBotCog(commands.Cog, name="drewbot"):
             censor_character=self.censor_character,
             server_emotes=self.server_emotes,
         )
-
-        # Ugly hack because multi-turn models use a different format from the others
         use_new_format = label in ("4.1", "4.1 Nano")
-        real_prompt = self.botify_input_text(
+        base_prompt = self.botify_input_text(
             username=author.name, text=prompt, use_new_format=use_new_format
         )
-        system_prompt = (
-            self.system_prompt
-            if not use_new_format
-            else "Never say 'later' or 'no', always answer in depth."
+        system_prompt = None if use_new_format else self.system_prompt
+        message_payload = await self._prepare_prompt(
+            prompt=base_prompt,
+            use_new_format=use_new_format,
         )
+
         response_gen = openai_client.stream_response(
             model=model_id,
             label=label,
             system_prompt=system_prompt,
-            prompt=real_prompt,
+            prompt=message_payload,
             prev_resp_id=prev_resp_id,
             temperature=temperature,
         )
@@ -259,6 +258,23 @@ class DrewBotCog(commands.Cog, name="drewbot"):
             return f"{username}: {text}"
         return f"{username}: {text}\n{self.username}: "
 
+    async def _prepare_prompt(
+        self,
+        prompt: str,
+        use_new_format: bool,
+    ) -> str | list[dict[str, str]]:
+        """Build either chat payload (new format) or legacy transcript."""
+        if use_new_format:
+            messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
+            return messages
+        return prompt
+
+    def _interaction_from_guild_owner(self, interaction: discord.Interaction) -> bool:
+        guild = interaction.guild
+        if not guild or guild.owner_id is None:
+            return False
+        return interaction.user.id == guild.owner_id
+
     @app_commands.command(
         name="drewbot", description="Chat with Drewbot. (Patron-only)"
     )
@@ -282,7 +298,7 @@ class DrewBotCog(commands.Cog, name="drewbot"):
         """
         user_is_patron = any(
             user_has_role(interaction, role) for role in self.patron_role_ids
-        )
+        ) or self._interaction_from_guild_owner(interaction)
         if not user_is_patron:
             await interaction.response.send_message(
                 "D--> You must have the Patron role to use this command.",

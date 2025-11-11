@@ -1,4 +1,6 @@
-from typing import Any, AsyncGenerator
+from collections.abc import Callable
+from types import SimpleNamespace
+from typing import Any, AsyncGenerator, Iterable
 
 import openai
 from constants.ai import MODEL_PRICING_TABLE
@@ -94,7 +96,9 @@ class AIClient:
         if not server_emotes:
             server_emotes = {}
 
-        self.client: openai.AsyncClient = openai.AsyncClient(api_key=api_key)
+        self.client: openai.AsyncClient | None = None
+        if api_key:
+            self.client = openai.AsyncClient(api_key=api_key)
         self.censored_words: list[str] = censored_words
         self.censor_character: str = censor_character
         self.server_emotes: dict[str, str] = server_emotes
@@ -104,19 +108,20 @@ class AIClient:
         model: str,
         label: str,
         system_prompt: str | None,
-        prompt: str,
+        prompt: str | list[dict[str, Any]],
         prev_resp_id: str | None = None,
         temperature: float = 1.0,
+        on_completed: Callable[[dict], None] | None = None,
     ) -> AsyncGenerator[tuple[str | None, str | Any, str], Any]:
-        input_characters = len(prompt)
+        input_characters = self._count_input_characters(prompt)
         input_tokens = input_characters // 4
         real_max_output_characters = 1000
         max_characters = real_max_output_characters - input_characters
         max_tokens = max_characters * 4
 
-        print(f"Received prompt: {prompt}")
+        client = self._require_client()
 
-        stream = await self.client.responses.create(
+        stream = await client.responses.create(
             model=model,
             input=prompt,
             instructions=system_prompt,
@@ -141,18 +146,161 @@ class AIClient:
                 content += event.delta
                 yield response_id, content, footer
             elif event.type == "response.completed":
-                if event.response.usage:
-                    cost = calculate_cost(event.response.usage, model)
-                    footer = (
-                        f"☸{model_label} | "
-                        f"🌡{round(temperature, 3)} | "
-                        f"✉{event.response.usage.total_tokens} | "
-                        f"${cost:.4f}"
-                    )
+                response_dict = self._response_to_dict(event.response)
+                content = self._extract_text_from_output(
+                    response_dict.get("output", [])
+                )
+                footer = self._build_footer_from_response(
+                    response_dict,
+                    model,
+                    model_label,
+                    temperature,
+                    fallback_footer=footer,
+                )
+                if on_completed:
+                    on_completed(response_dict)
                 yield response_id, content, footer
             elif event.type == "response.error":
                 yield response_id, "An error occurred.", footer
                 break
+
+    def _extract_text_from_output(
+        self,
+        output_items: Iterable[Any],
+        *,
+        fallback_text: str | Iterable[str] | None = None,
+    ) -> str:
+        collected: list[str] = []
+        if output_items:
+            for item in output_items:
+                contents = self._get_attr_or_key(item, "content", None)
+                if not contents:
+                    continue
+                if isinstance(contents, dict):
+                    contents = [contents]
+                for content in contents:
+                    text = self._get_attr_or_key(content, "text", None)
+                    if text:
+                        collected.append(text)
+        if not collected and fallback_text:
+            if isinstance(fallback_text, str):
+                collected.append(fallback_text)
+            elif isinstance(fallback_text, Iterable):
+                for chunk in fallback_text:
+                    if isinstance(chunk, str):
+                        collected.append(chunk)
+        return "".join(collected).strip()
+
+    def _count_input_characters(self, prompt: str | list[dict[str, Any]]) -> int:
+        if isinstance(prompt, str):
+            return len(prompt)
+        total = 0
+        for part in prompt:
+            content = part.get("content", "")
+            if isinstance(content, str):
+                total += len(content)
+            elif isinstance(content, list):
+                for chunk in content:
+                    if isinstance(chunk, dict) and chunk.get("type") == "text":
+                        total += len(chunk.get("text", ""))
+        return total
+
+    def _strip_code_fences(self, text: str) -> str:
+        stripped = text.strip()
+        if stripped.startswith("```") and stripped.endswith("```"):
+            lines = stripped.splitlines()
+            if len(lines) >= 2:
+                return "\n".join(lines[1:-1]).strip()
+        return stripped
+
+    def _require_client(self) -> openai.AsyncClient:
+        if self.client is None:
+            raise RuntimeError(
+                "AIClient cannot make API calls without an API key"
+            )
+        return self.client
+
+    def summarize_response_data(
+        self, response_data: dict, model: str, label: str, temperature: float
+    ) -> tuple[str | None, str, str]:
+        response_id = response_data.get("id")
+        content = self._extract_text_from_output(response_data.get("output", []))
+        footer = self._build_footer_from_response(
+            response_data,
+            model,
+            label or get_user_friendly_model_string(model),
+            temperature,
+            fallback_footer=(
+                f"☸{label or get_user_friendly_model_string(model)} | "
+                f"🌡{round(temperature, 3)} | ✉0 | $0.0000"
+            ),
+        )
+        return response_id, content, footer
+
+    def _get_attr_or_key(self, obj: Any, key: str, default: Any) -> Any:
+        if obj is None:
+            return default
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+
+    def _response_to_dict(self, response: Any) -> dict:
+        if isinstance(response, dict):
+            return response
+        if hasattr(response, "model_dump"):
+            return response.model_dump()
+        if hasattr(response, "dict"):
+            return response.dict()
+        raise TypeError("Unsupported response type for serialization")
+
+    def _build_footer_from_response(
+        self,
+        response_data: dict,
+        model: str,
+        label: str,
+        temperature: float,
+        *,
+        fallback_footer: str,
+    ) -> str:
+        usage_data = response_data.get("usage")
+        if not usage_data:
+            return fallback_footer
+
+        usage_obj = self._build_usage_namespace(usage_data)
+        cost = calculate_cost(usage_obj, model)
+        total_tokens = getattr(
+            usage_obj,
+            "total_tokens",
+            usage_obj.input_tokens + usage_obj.output_tokens,
+        )
+        return (
+            f"☸{label} | "
+            f"🌡{round(temperature, 3)} | "
+            f"✉{total_tokens} | "
+            f"${cost:.4f}"
+        )
+
+    def _build_usage_namespace(self, usage_data: Any) -> SimpleNamespace:
+        if isinstance(usage_data, dict):
+            input_tokens = usage_data.get("input_tokens", 0)
+            output_tokens = usage_data.get("output_tokens", 0)
+            input_details = usage_data.get("input_tokens_details", {})
+            total_tokens = usage_data.get(
+                "total_tokens", input_tokens + output_tokens
+            )
+        else:
+            input_tokens = getattr(usage_data, "input_tokens", 0)
+            output_tokens = getattr(usage_data, "output_tokens", 0)
+            input_details = getattr(usage_data, "input_tokens_details", {})
+            total_tokens = getattr(
+                usage_data, "total_tokens", input_tokens + output_tokens
+            )
+        return SimpleNamespace(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            input_tokens_details=input_details,
+            total_tokens=total_tokens,
+        )
 
     def censor_text(self, text: str) -> str:
         for word in self.censored_words:

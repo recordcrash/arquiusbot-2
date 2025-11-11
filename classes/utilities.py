@@ -9,7 +9,7 @@ from discord import app_commands
 from importlib import reload
 from json import load
 from os import listdir
-from os.path import dirname, abspath, join, basename, splitext
+from os.path import dirname, abspath, join, basename, splitext, exists
 from sys import modules
 from types import ModuleType
 from typing import Generator, NoReturn, Union
@@ -19,17 +19,22 @@ from classes.discordbot import DiscordBot
 root_directory = dirname(dirname(abspath(__file__)))
 config_directory = join(root_directory, "config")
 cogs_directory = join(root_directory, "cogs")
+DEFAULT_CONFIG_FILES = ("bot.json", "cogs.json")
 
 def credential(file: str) -> dict:
     with open(join(config_directory, file), "r") as f:
         return load(f)
 
-def load_config() -> dict:
-    config = dict()
-    for file in listdir(config_directory):
-        filename, ext = splitext(file)
-        if ext == ".json":
-            config[filename] = credential(file)
+def load_config(config_files: tuple[str, ...] = DEFAULT_CONFIG_FILES) -> dict:
+    config = {}
+    for file in config_files:
+        path = join(config_directory, file)
+        if not exists(path):
+            raise FileNotFoundError(
+                f"Required config file '{file}' not found in {config_directory}"
+            )
+        filename, _ = splitext(file)
+        config[filename] = credential(file)
     return config
 
 async def cogs_manager(bot: DiscordBot, mode: str, cogs: list[str]) -> None:
