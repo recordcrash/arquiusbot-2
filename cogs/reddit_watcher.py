@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import logging
+import time
 from typing import Any
 
 import aiohttp
@@ -10,9 +11,13 @@ from discord.ext import commands, tasks
 
 from classes.discordbot import DiscordBot
 
-REDDIT_BASE = "https://www.reddit.com"
+REDDIT_PUBLIC_BASE = "https://www.reddit.com"
+REDDIT_OAUTH_BASE = "https://oauth.reddit.com"
+REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token"
 DEFAULT_USER_AGENT = "arquiusbot/1.0 reddit-watcher"
 SEEN_TTL_DAYS = 14
+# Refresh the OAuth token this many seconds before its stated expiry.
+TOKEN_REFRESH_MARGIN_SECONDS = 60
 
 # Embed-bar colour per link-flair CSS class, derived from r/homestuck's
 # subreddit CSS. For flairs whose background is light grey, we use the text
@@ -45,9 +50,14 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
     into a configured Discord channel. Each submission is only posted once;
     state is persisted in the bot's SQLite database.
 
-    Uses Reddit's public ``.json`` endpoint — no credentials required, but a
-    descriptive User-Agent is (per Reddit's API rules) and the default poll
-    cadence stays well inside the ~10 req/min unauth limit.
+    Uses Reddit's OAuth2 API (``oauth.reddit.com``) when credentials are
+    provided; falls back to the anonymous ``.json`` endpoint otherwise.
+    OAuth is required from most cloud/datacenter hosts (DigitalOcean,
+    AWS, etc.) since Reddit blocks anonymous requests from those IP
+    ranges. Credentials come from a "script" app registered at
+    https://www.reddit.com/prefs/apps . We use the ``client_credentials``
+    grant, which authenticates the app as itself (no user account) and
+    is sufficient for reading public subreddit data.
 
     Config keys (``config/cogs*.json`` under ``reddit_watcher``):
         subreddit         str   default "homestuck"
@@ -56,6 +66,8 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
         interval_minutes  int   default 10
         fetch_limit       int   default 25  (capped at 100)
         user_agent        str   default "arquiusbot/1.0 reddit-watcher"
+        client_id         str   OAuth client id   (optional)
+        client_secret     str   OAuth client secret   (optional)
     """
 
     def __init__(self, bot: DiscordBot) -> None:
@@ -75,7 +87,18 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
         )
         self.user_agent: str = self.subconfig_data.get("user_agent", DEFAULT_USER_AGENT)
 
+        # OAuth credentials — when both are non-empty, the cog uses the
+        # authenticated API path via the client_credentials grant.
+        self.client_id: str = self.subconfig_data.get("client_id", "") or ""
+        self.client_secret: str = self.subconfig_data.get("client_secret", "") or ""
+
         self._session: aiohttp.ClientSession | None = None
+        self._access_token: str | None = None
+        self._token_expires_at: float = 0.0
+
+    @property
+    def has_oauth_credentials(self) -> bool:
+        return bool(self.client_id and self.client_secret)
 
     async def cog_load(self) -> None:
         if not self.channel_id:
@@ -110,6 +133,61 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
     async def _wait_ready(self) -> None:
         await self.bot.wait_until_ready()
 
+    async def _fetch_access_token(self) -> str | None:
+        """Request a new Reddit OAuth access token via client_credentials.
+
+        Returns the token string on success, ``None`` on failure. Tokens
+        issued by Reddit last ~24h by default; we refresh 60s before
+        expiry to avoid edge-of-clock races. No user account is
+        involved — this is app-only OAuth, sufficient for reading
+        public subreddit data.
+        """
+        if self._session is None or self._session.closed:
+            return None
+        auth = aiohttp.BasicAuth(self.client_id, self.client_secret)
+        data = {"grant_type": "client_credentials"}
+        try:
+            async with self._session.post(
+                REDDIT_TOKEN_URL,
+                auth=auth,
+                data=data,
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as resp:
+                if resp.status != 200:
+                    body = (await resp.text())[:200]
+                    self.bot.log(
+                        f"RedditWatcher: token fetch HTTP {resp.status}: {body}",
+                        name="reddit_watcher",
+                        level=logging.ERROR,
+                    )
+                    return None
+                payload = await resp.json()
+        except aiohttp.ClientError as exc:
+            self.bot.log(
+                f"RedditWatcher: token fetch failed: {exc}",
+                name="reddit_watcher",
+                level=logging.ERROR,
+            )
+            return None
+
+        token = payload.get("access_token")
+        if not token:
+            self.bot.log(
+                f"RedditWatcher: token response missing access_token: {payload}",
+                name="reddit_watcher",
+                level=logging.ERROR,
+            )
+            return None
+        expires_in = int(payload.get("expires_in") or 3600)
+        self._access_token = token
+        self._token_expires_at = time.time() + expires_in - TOKEN_REFRESH_MARGIN_SECONDS
+        return token
+
+    async def _get_valid_token(self) -> str | None:
+        if self._access_token and time.time() < self._token_expires_at:
+            return self._access_token
+        return await self._fetch_access_token()
+
     async def _poll_once(self) -> None:
         if self._session is None or self._session.closed:
             return
@@ -117,11 +195,43 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
         if db is None:
             return
 
-        url = f"{REDDIT_BASE}/r/{self.subreddit}/new.json?limit={self.fetch_limit}"
+        # Build request: OAuth if credentials present, anonymous fallback
+        # otherwise. Anonymous will fail with 403 from cloud/datacenter
+        # IPs (DigitalOcean, AWS, etc.) — the log message will make the
+        # cause explicit if it happens.
+        if self.has_oauth_credentials:
+            token = await self._get_valid_token()
+            if token is None:
+                return  # _fetch_access_token already logged the reason
+            url = (
+                f"{REDDIT_OAUTH_BASE}/r/{self.subreddit}"
+                f"/new?limit={self.fetch_limit}"
+            )
+            req_headers = {"Authorization": f"Bearer {token}"}
+        else:
+            url = (
+                f"{REDDIT_PUBLIC_BASE}/r/{self.subreddit}"
+                f"/new.json?limit={self.fetch_limit}"
+            )
+            req_headers = {}
+
         try:
             async with self._session.get(
-                url, timeout=aiohttp.ClientTimeout(total=30)
+                url,
+                headers=req_headers,
+                timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:
+                if resp.status == 401 and self.has_oauth_credentials:
+                    # Force a refresh on the next poll in case the
+                    # server-side invalidated our token early.
+                    self._access_token = None
+                    self.bot.log(
+                        "RedditWatcher: OAuth token rejected (401); "
+                        "will refresh on next poll",
+                        name="reddit_watcher",
+                        level=logging.WARNING,
+                    )
+                    return
                 if resp.status != 200:
                     self.bot.log(
                         f"RedditWatcher: {url} -> HTTP {resp.status}",
@@ -262,7 +372,7 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
         self, post: dict[str, Any], *, primary_image: str | None = None
     ) -> discord.Embed:
         title = (post.get("title") or "(untitled)")[:256]
-        permalink = REDDIT_BASE + (post.get("permalink") or "")
+        permalink = REDDIT_PUBLIC_BASE + (post.get("permalink") or "")
         external = post.get("url_overridden_by_dest") or post.get("url") or permalink
         author = post.get("author") or "[deleted]"
         score = post.get("score", 0)

@@ -45,7 +45,15 @@
         "min_score": 30, // only repost once the post crosses this score
         "interval_minutes": 10, // poll cadence (stay well under 10 req/min)
         "fetch_limit": 25, // capped at 100 by Reddit
-        "user_agent": "arquiusbot/1.0 reddit-watcher"
+        "user_agent": "arquiusbot/1.0 reddit-watcher",
+        // OAuth2 app credentials from a "script" app at
+        // https://www.reddit.com/prefs/apps — required from cloud/datacenter
+        // hosts (DigitalOcean, AWS) since Reddit blocks anonymous requests
+        // from those IP ranges. We use the client_credentials grant
+        // (app-only OAuth), so no user account is involved. Leave blank
+        // for local dev on a residential IP.
+        "client_id": "",
+        "client_secret": ""
     },
     "drewbot": {
         "openai_api_key": "sk-key",
