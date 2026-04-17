@@ -39,6 +39,14 @@
     "misc": {
         "latex_channel_ids": [1, 2, 3] // latex can only be used in these channels
     },
+    "reddit_watcher": { // reposts high-scoring subreddit posts to a channel
+        "subreddit": "homestuck",
+        "channel_id": 0, // destination Discord channel id
+        "min_score": 30, // only repost once the post crosses this score
+        "interval_minutes": 10, // poll cadence (stay well under 10 req/min)
+        "fetch_limit": 25, // capped at 100 by Reddit
+        "user_agent": "arquiusbot/1.0 reddit-watcher"
+    },
     "drewbot": {
         "openai_api_key": "sk-key",
         "patron_role_ids": [1], // role ids that can use the bot

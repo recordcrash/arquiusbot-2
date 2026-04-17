@@ -1,7 +1,7 @@
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timedelta, timezone
 
 
 class Database:
@@ -65,6 +65,14 @@ class Database:
                 pinged_at TEXT NOT NULL,
                 total_reactions INTEGER,
                 threshold INTEGER
+            );
+
+            CREATE TABLE IF NOT EXISTS reddit_watch_posts (
+                post_id TEXT PRIMARY KEY,
+                first_seen TEXT NOT NULL,
+                posted INTEGER NOT NULL DEFAULT 0,
+                posted_at TEXT,
+                score_at_post INTEGER
             );
             """
             )
@@ -375,5 +383,66 @@ class Database:
             conn.execute(
                 "DELETE FROM reaction_pings WHERE message_id = ?",
                 (message_id,),
+            )
+            conn.commit()
+
+    # Reddit Watcher Operations
+
+    def record_reddit_post_seen(self, post_id: str) -> None:
+        """
+        Records that a Reddit post has been observed by the poller.
+
+        First observation stamps ``first_seen``; subsequent observations are
+        no-ops. Used so the poller can prune old rows after they age out.
+        """
+        now = self.sanitize_datetime(datetime.now(timezone.utc))
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO reddit_watch_posts (post_id, first_seen, posted)
+                VALUES (?, ?, 0)
+                """,
+                (post_id, now),
+            )
+            conn.commit()
+
+    def has_reddit_post_been_posted(self, post_id: str) -> bool:
+        """Returns True if the given post has already been posted to Discord."""
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT posted FROM reddit_watch_posts WHERE post_id = ? LIMIT 1",
+                (post_id,),
+            )
+            row = cur.fetchone()
+            return bool(row and row[0])
+
+    def mark_reddit_post_posted(self, post_id: str, score: int) -> None:
+        """Marks a Reddit post as posted, recording its score at post time."""
+        now = self.sanitize_datetime(datetime.now(timezone.utc))
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO reddit_watch_posts
+                    (post_id, first_seen, posted, posted_at, score_at_post)
+                VALUES (?, ?, 1, ?, ?)
+                ON CONFLICT(post_id) DO UPDATE SET
+                    posted = 1,
+                    posted_at = excluded.posted_at,
+                    score_at_post = excluded.score_at_post
+                """,
+                (post_id, now, now, score),
+            )
+            conn.commit()
+
+    def prune_reddit_posts(self, ttl_days: int) -> None:
+        """Removes Reddit poster rows whose ``first_seen`` is older than ``ttl_days``."""
+        cutoff = self.sanitize_datetime(
+            datetime.now(timezone.utc) - timedelta(days=ttl_days)
+        )
+        with self.get_connection() as conn:
+            conn.execute(
+                "DELETE FROM reddit_watch_posts WHERE first_seen < ?",
+                (cutoff,),
             )
             conn.commit()
