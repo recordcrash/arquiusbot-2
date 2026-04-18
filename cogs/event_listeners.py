@@ -1,4 +1,6 @@
+import csv
 import io
+import os
 import re
 import time
 from collections import defaultdict
@@ -18,6 +20,11 @@ IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif", ".jfif"
 
 # Seconds after a ban where deleted messages won't be logged (avoid rate limits)
 IGNORE_WINDOW = 600
+
+# Optional CSV with historical user activity from the old Homestuck Discord.
+# Loaded once at cog init; gracefully absent if the file doesn't exist.
+# Schema: id,name,message_count,last_post_date
+HSD_USER_LIST_FILE = os.path.join("data", "hsd_user_list.csv")
 
 
 class EventListeners(commands.Cog, name="events"):
@@ -56,6 +63,77 @@ class EventListeners(commands.Cog, name="events"):
 
         # Estimated total reactions per message id to reduce fetches
         self._reaction_estimate: dict[int, int] = defaultdict(int)
+
+        # Legacy-HSD activity map: user_id -> {name, message_count, last_post_date}.
+        # Empty dict if the optional CSV file isn't present.
+        self.hsd_user_data: dict[int, dict[str, str]] = self._load_hsd_user_list()
+        if self.hsd_user_data:
+            self.bot.log(
+                message=f"Loaded {len(self.hsd_user_data)} HSD user records "
+                f"from {HSD_USER_LIST_FILE}",
+                name="EventListeners",
+            )
+
+    @staticmethod
+    def _load_hsd_user_list() -> dict[int, dict[str, str]]:
+        """Reads ``data/hsd_user_list.csv`` into a dict keyed by user id.
+
+        Returns an empty dict if the file is missing or unreadable — the
+        feature is optional and the rest of the cog works fine without
+        it.
+        """
+        if not os.path.exists(HSD_USER_LIST_FILE):
+            return {}
+        out: dict[int, dict[str, str]] = {}
+        try:
+            with open(HSD_USER_LIST_FILE, newline="", encoding="utf-8") as f:
+                for row in csv.DictReader(f):
+                    raw_id = (row.get("id") or "").strip()
+                    try:
+                        uid = int(raw_id)
+                    except (TypeError, ValueError):
+                        continue
+                    out[uid] = {
+                        "name": (row.get("name") or "").strip(),
+                        "message_count": (row.get("message_count") or "").strip(),
+                        "last_post_date": (row.get("last_post_date") or "").strip(),
+                    }
+        except OSError:
+            return {}
+        return out
+
+    def _hsd_embed_fields(self, user_id: int) -> list[tuple[str, str, bool]]:
+        """Returns the extra embed fields for a known legacy-HSD user, or []."""
+        entry = self.hsd_user_data.get(user_id)
+        if not entry:
+            return []
+
+        # Format message count with thousands separators (e.g. "1,836,244").
+        raw_count = entry.get("message_count", "")
+        try:
+            count_display = f"{int(raw_count):,}"
+        except (TypeError, ValueError):
+            count_display = raw_count or "unknown"
+
+        # Parse the last-post date (CSV format "YYYY-MM-DD HH:MM:SS", UTC).
+        # Render as a Discord relative timestamp so it reads naturally
+        # ("3 weeks ago"); fall back to the raw string if parsing fails.
+        raw_date = entry.get("last_post_date", "")
+        try:
+            dt = datetime.fromisoformat(raw_date)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            date_display = self._relative_ts(dt)
+        except (TypeError, ValueError):
+            date_display = raw_date or "unknown"
+
+        nickname = entry.get("name") or "unknown"
+
+        return [
+            ("Last Seen in HSD", date_display, True),
+            ("Number of Messages", count_display, True),
+            ("Nickname", nickname, True),
+        ]
 
     def _relative_ts(self, dt: datetime) -> str:
         """Returns a Discord relative timestamp for a datetime."""
@@ -147,6 +225,11 @@ class EventListeners(commands.Cog, name="events"):
                     name="Account Age", value=self._relative_ts(member.created_at)
                 )
                 embed.add_field(name="User ID", value=str(member.id), inline=True)
+                # If we have legacy-HSD activity data for this user, surface it.
+                for field_name, field_value, inline in self._hsd_embed_fields(
+                    member.id
+                ):
+                    embed.add_field(name=field_name, value=field_value, inline=inline)
                 embed.set_thumbnail(url=member.display_avatar.url)
                 await channel.send(embed=embed)
 
@@ -523,7 +606,9 @@ class EventListeners(commands.Cog, name="events"):
         )
 
     @commands.Cog.listener()
-    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
+    async def on_raw_reaction_add(
+        self, payload: discord.RawReactionActionEvent
+    ) -> None:
         """Pings a user when a bot message crosses the reaction threshold."""
         channel = self.bot.get_channel(payload.channel_id)
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
@@ -579,7 +664,7 @@ class EventListeners(commands.Cog, name="events"):
         ping_uid = self.bot.config["cogs"]["daily_counter"]["ping_user_id"]
         if not ping_uid:
             return
-        admin_mention = f'<@{ping_uid}>'
+        admin_mention = f"<@{ping_uid}>"
 
         now = datetime.now(timezone.utc)
         embed = discord.Embed(
