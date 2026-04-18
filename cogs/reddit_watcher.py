@@ -18,6 +18,11 @@ DEFAULT_USER_AGENT = "arquiusbot/1.0 reddit-watcher"
 SEEN_TTL_DAYS = 14
 # Refresh the OAuth token this many seconds before its stated expiry.
 TOKEN_REFRESH_MARGIN_SECONDS = 60
+# Host substrings that identify a URL as pointing to Reddit-owned media /
+# pages. Used to skip the description's external-link field for URLs
+# that are already represented by the title link, embed image, or
+# auto-embedded video.
+REDDIT_HOST_SUBSTRINGS = ("reddit.com", "redd.it")
 
 # Embed-bar colour per link-flair CSS class, derived from r/homestuck's
 # subreddit CSS. For flairs whose background is light grey, we use the text
@@ -279,9 +284,11 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
             if score < self.min_score:
                 continue
 
+            content, embeds = self._build_message(post)
             try:
                 await channel.send(
-                    embeds=self._build_embeds(post),
+                    content=content,
+                    embeds=embeds,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
             except discord.HTTPException as exc:
@@ -337,22 +344,57 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
         src = previews[0].get("source", {}).get("url")
         return html.unescape(src) if src else None
 
-    def _build_embeds(self, post: dict[str, Any]) -> list[discord.Embed]:
-        """Builds the embed(s) for a post.
+    @staticmethod
+    def _video_content_url(post: dict[str, Any]) -> str | None:
+        """Returns a URL suitable for message.content so Discord
+        auto-embeds a video player.
 
-        Galleries return up to 4 embeds sharing the same permalink URL;
-        Discord stacks same-URL embeds into a single card with multiple
-        images. Non-galleries return a single embed with an optional
-        preview image.
+        For Reddit-hosted videos (``post_hint == "hosted:video"``) we
+        return ``media.reddit_video.fallback_url`` — a direct MP4 URL.
+        Third-party video embeds (YouTube, Twitter, etc., which come
+        through as ``post_hint == "rich:video"``) get their
+        ``url_overridden_by_dest``; Discord auto-embeds those hosts
+        natively.
+        """
+        media = post.get("media") or {}
+        rv = media.get("reddit_video") or {}
+        fallback = rv.get("fallback_url")
+        if fallback:
+            return fallback
+        if post.get("post_hint") == "rich:video":
+            return post.get("url_overridden_by_dest") or post.get("url")
+        return None
+
+    def _build_message(
+        self, post: dict[str, Any]
+    ) -> tuple[str | None, list[discord.Embed]]:
+        """Builds the message-content and embed(s) for a post.
+
+        Returns ``(content, embeds)``. ``content`` is non-None for video
+        posts: we put the direct video URL in message content so
+        Discord's own auto-embed renders an inline video player (custom
+        embeds can't play video). Galleries return up to 4 embeds
+        sharing the permalink URL so Discord stacks them into one card.
         """
         gallery_urls = self._gallery_image_urls(post)
-        single = self._single_preview_image(post) if not gallery_urls else None
-        # Knowing the image URL up-front lets the main-embed builder
-        # suppress a redundant description hyperlink when the external
-        # URL is the same as the image being shown.
-        primary_image = gallery_urls[0] if gallery_urls else single
+        video_url = None if gallery_urls else self._video_content_url(post)
+        # Only use a single preview image if we're not showing gallery
+        # images or auto-embedding a video (otherwise we'd get a
+        # pointless duplicate / black thumbnail).
+        single = (
+            self._single_preview_image(post)
+            if not (gallery_urls or video_url)
+            else None
+        )
 
-        main = self._build_main_embed(post, primary_image=primary_image)
+        # URL to suppress from the description's external-link line —
+        # it's already being rendered as the embed image or as an
+        # auto-embedded video.
+        suppress_url: str | None = (
+            gallery_urls[0] if gallery_urls else (video_url or single)
+        )
+
+        main = self._build_main_embed(post, suppress_description_url=suppress_url)
 
         if gallery_urls:
             main.set_image(url=gallery_urls[0])
@@ -362,14 +404,20 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
                 extra = discord.Embed(url=main.url)
                 extra.set_image(url=extra_url)
                 extras.append(extra)
-            return [main, *extras]
+            return None, [main, *extras]
 
         if single:
             main.set_image(url=single)
-        return [main]
+
+        # For video posts, don't set an embed image — Discord's
+        # auto-embed from the URL in content will show the player.
+        return video_url, [main]
 
     def _build_main_embed(
-        self, post: dict[str, Any], *, primary_image: str | None = None
+        self,
+        post: dict[str, Any],
+        *,
+        suppress_description_url: str | None = None,
     ) -> discord.Embed:
         title = (post.get("title") or "(untitled)")[:256]
         permalink = REDDIT_PUBLIC_BASE + (post.get("permalink") or "")
@@ -403,15 +451,15 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
 
         # Show external links inline in the description. Skip:
         #  - self-posts (external is the permalink itself);
-        #  - reddit-internal URLs (gallery pages etc.) — already linked via
-        #    the embed title;
-        #  - the exact URL we're about to render as the embed image,
-        #    since repeating it as a hyperlink is redundant (common case:
-        #    plain image posts from i.redd.it).
+        #  - any Reddit-owned URL (reddit.com gallery page, v.redd.it
+        #    video, i.redd.it image, etc.) — already represented by the
+        #    title link, embed image, or auto-embedded video;
+        #  - the exact URL the caller says it's already rendering.
+        is_reddit_owned = any(h in external for h in REDDIT_HOST_SUBSTRINGS)
         if (
             external != permalink
-            and "reddit.com" not in external
-            and external != primary_image
+            and not is_reddit_owned
+            and external != suppress_description_url
         ):
             desc_parts.append(f"[{external[:60]}]({external})")
 
