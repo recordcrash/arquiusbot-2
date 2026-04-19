@@ -503,27 +503,33 @@ class EventListeners(commands.Cog, name="events"):
 
     @commands.Cog.listener()
     async def on_audit_log_entry_create(self, entry: discord.AuditLogEntry) -> None:
-        """Handles Discord audit-log push events.
+        """Dispatches Discord audit-log push events to per-action loggers.
 
-        Currently scoped to ban actions: we emit the "Member Banned"
-        modlog embed from here so we can read ``entry.reason`` and
-        ``entry.user`` (the moderator) directly from the gateway
-        payload — no extra HTTP fetch, no race against on_member_ban.
+        Centralising modlog emits here means we always have the executor
+        (``entry.user``) and the full diff (``entry.changes``) available
+        without a separate REST round-trip — and no race against the
+        corresponding raw event (on_member_ban, on_guild_channel_*).
         """
-        if entry.action != discord.AuditLogAction.ban:
-            return
+        action = entry.action
+        if action == discord.AuditLogAction.ban:
+            await self._log_audit_ban(entry)
+        elif action == discord.AuditLogAction.channel_create:
+            await self._log_audit_channel_create(entry)
+        elif action == discord.AuditLogAction.channel_update:
+            await self._log_audit_channel_update(entry)
+        elif action == discord.AuditLogAction.channel_delete:
+            await self._log_audit_channel_delete(entry)
 
+    async def _log_audit_ban(self, entry: discord.AuditLogEntry) -> None:
         target = entry.target
         if target is None:
             return
-
         # entry.target is typically a User for ban actions, but can be
         # a discord.Object when the user is uncached. Render both.
         if isinstance(target, (discord.User, discord.Member)):
             description = f"{target.mention} ({target})"
         else:
             description = f"<@{target.id}>"
-
         fields: list[tuple[str, str, bool]] = []
         if entry.reason:
             # Discord embed field values cap at 1024 chars.
@@ -531,13 +537,101 @@ class EventListeners(commands.Cog, name="events"):
         if entry.user is not None:
             mod = entry.user
             fields.append(("Banned by", f"{mod.mention} ({mod})", True))
-
         await self._log_simple_event(
             self.modlog_channel_id,
             title="Member Banned",
             description=description,
             color=discord.Color.dark_red(),
             fields=fields or None,
+        )
+
+    async def _log_audit_channel_create(self, entry: discord.AuditLogEntry) -> None:
+        target = entry.target
+        if target is None:
+            return
+        target_mention = getattr(target, "mention", f"<#{target.id}>")
+        fields: list[tuple[str, str, bool]] = [
+            ("Channel ID", str(target.id), True),
+        ]
+        if entry.user is not None:
+            fields.append(("Created by", f"{entry.user.mention} ({entry.user})", True))
+        await self._log_simple_event(
+            self.modlog_channel_id,
+            title="Channel Created",
+            description=f"{target_mention} was created",
+            color=discord.Color.green(),
+            fields=fields,
+        )
+
+    async def _log_audit_channel_update(self, entry: discord.AuditLogEntry) -> None:
+        target = entry.target
+        if target is None:
+            return
+
+        before = entry.changes.before
+        after = entry.changes.after
+        fields: list[tuple[str, str, bool]] = []
+        files: list[discord.File] = []
+
+        # Iterate only over the attributes Discord says actually changed
+        # (AuditLogDiff exposes them via __dict__/iter). We render a few
+        # known interesting fields and silently skip the rest (position
+        # changes, default_thread_slowmode_delay, etc.) to avoid noise.
+        for attr, after_val in after:
+            before_val = getattr(before, attr, None)
+            if attr == "name":
+                fields.append(("Name", f"{before_val} → {after_val}", False))
+            elif attr == "topic":
+                raw = f"{before_val or '[none]'} → {after_val or '[none]'}"
+                val, file = self._maybe_attach_content(raw, prefix="topic")
+                fields.append(("Topic", val, False))
+                if file:
+                    files.append(file)
+            elif attr == "category":
+                before_name = before_val.name if before_val else "None"
+                after_name = after_val.name if after_val else "None"
+                fields.append(("Category", f"{before_name} → {after_name}", True))
+
+        # If only uninteresting fields changed, don't post anything.
+        if not fields:
+            return
+
+        if entry.user is not None:
+            fields.append(("Changed by", f"{entry.user.mention} ({entry.user})", True))
+
+        target_mention = getattr(target, "mention", f"<#{target.id}>")
+        await self._log_simple_event(
+            self.modlog_channel_id,
+            title="Channel Updated",
+            description=f"Changes in {target_mention}",
+            color=discord.Color.orange(),
+            fields=fields,
+            files=files or None,
+        )
+
+    async def _log_audit_channel_delete(self, entry: discord.AuditLogEntry) -> None:
+        target = entry.target
+        if target is None:
+            return
+        # By the time the entry arrives, the channel is already deleted,
+        # so target is usually a discord.Object with no .name. Pre-delete
+        # name is preserved in entry.changes.before.name.
+        deleted_name = (
+            getattr(entry.changes.before, "name", None)
+            or getattr(target, "name", None)
+            or f"channel-{target.id}"
+        )
+        fields: list[tuple[str, str, bool]] = [
+            ("Channel ID", str(target.id), True),
+        ]
+        if entry.user is not None:
+            fields.append(("Deleted by", f"{entry.user.mention} ({entry.user})", True))
+        await self._log_simple_event(
+            self.modlog_channel_id,
+            title="Channel Deleted",
+            description=f"**{deleted_name}** was deleted",
+            color=discord.Color.red(),
+            fields=fields,
         )
 
     @commands.Cog.listener()
@@ -590,58 +684,8 @@ class EventListeners(commands.Cog, name="events"):
                 fields=changes,
             )
 
-    @commands.Cog.listener()
-    async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> None:
-        await self._log_simple_event(
-            self.modlog_channel_id,
-            title="Channel Created",
-            description=f"{channel.mention} was created",
-            color=discord.Color.green(),
-            fields=[("Channel ID", str(channel.id), True)],
-        )
-
-    @commands.Cog.listener()
-    async def on_guild_channel_update(
-        self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel
-    ) -> None:
-        changes: list[tuple[str, str, bool]] = []
-        files: list[discord.File] = []
-        if isinstance(before, discord.TextChannel) and before.topic != after.topic:
-            raw = f"{before.topic or '[none]'} → {after.topic or '[none]'}"
-            val, file = self._maybe_attach_content(raw, prefix="topic")
-            changes.append(("Topic", val, False))
-            if file:
-                files.append(file)
-        if before.name != after.name:
-            changes.append(("Name", f"{before.name} → {after.name}", False))
-        if before.category != after.category:
-            changes.append(
-                (
-                    "Category",
-                    f"{before.category.name if before.category else 'None'} → "
-                    f"{after.category.name if after.category else 'None'}",
-                    True,
-                )
-            )
-        if changes:
-            await self._log_simple_event(
-                self.modlog_channel_id,
-                title="Channel Updated",
-                description=f"Changes in {after.mention}",
-                color=discord.Color.orange(),
-                fields=changes,
-                files=files or None,
-            )
-
-    @commands.Cog.listener()
-    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> None:
-        await self._log_simple_event(
-            self.modlog_channel_id,
-            title="Channel Deleted",
-            description=f"{channel.name} was deleted",
-            color=discord.Color.red(),
-            fields=[("Channel ID", str(channel.id), True)],
-        )
+    # Channel create/update/delete modlogging is handled by
+    # on_audit_log_entry_create (above) so it can include the executor.
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(
