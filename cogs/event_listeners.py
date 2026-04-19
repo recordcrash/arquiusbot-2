@@ -490,17 +490,55 @@ class EventListeners(commands.Cog, name="events"):
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild: discord.Guild, user: discord.User):
+        # Bookkeeping only: the ban embed itself is emitted from
+        # on_audit_log_entry_create, which receives reason + moderator
+        # directly from Discord's gateway payload. We still need the
+        # _recent_bans window here because this event fires first and
+        # is what suppresses message-delete logs during the purge.
         now = time.time()
         self._recent_bans[user.id] = now + IGNORE_WINDOW
-        await self._log_simple_event(
-            self.modlog_channel_id,
-            title="Member Banned",
-            description=f"{user.mention} ({user})",
-            color=discord.Color.dark_red(),
-        )
         for uid, expires in list(self._recent_bans.items()):
             if expires < now:
                 self._recent_bans.pop(uid, None)
+
+    @commands.Cog.listener()
+    async def on_audit_log_entry_create(self, entry: discord.AuditLogEntry) -> None:
+        """Handles Discord audit-log push events.
+
+        Currently scoped to ban actions: we emit the "Member Banned"
+        modlog embed from here so we can read ``entry.reason`` and
+        ``entry.user`` (the moderator) directly from the gateway
+        payload — no extra HTTP fetch, no race against on_member_ban.
+        """
+        if entry.action != discord.AuditLogAction.ban:
+            return
+
+        target = entry.target
+        if target is None:
+            return
+
+        # entry.target is typically a User for ban actions, but can be
+        # a discord.Object when the user is uncached. Render both.
+        if isinstance(target, (discord.User, discord.Member)):
+            description = f"{target.mention} ({target})"
+        else:
+            description = f"<@{target.id}>"
+
+        fields: list[tuple[str, str, bool]] = []
+        if entry.reason:
+            # Discord embed field values cap at 1024 chars.
+            fields.append(("Reason", entry.reason[:1024], False))
+        if entry.user is not None:
+            mod = entry.user
+            fields.append(("Banned by", f"{mod.mention} ({mod})", True))
+
+        await self._log_simple_event(
+            self.modlog_channel_id,
+            title="Member Banned",
+            description=description,
+            color=discord.Color.dark_red(),
+            fields=fields or None,
+        )
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild: discord.Guild, user: discord.User):
