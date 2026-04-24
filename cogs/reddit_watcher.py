@@ -283,6 +283,11 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
                 continue
             if score < self.min_score:
                 continue
+            # Skip NSFW submissions (Reddit's ``over_18`` flag) — even if
+            # they cross the score threshold we don't want them surfaced
+            # in the channel.
+            if post.get("over_18"):
+                continue
 
             content, embeds = self._build_message(post)
             try:
