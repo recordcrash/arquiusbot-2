@@ -59,19 +59,11 @@ class Misc(commands.Cog, name="misc"):
     @app_commands.guild_only
     @app_commands.command(name="husky", description="Get a corpulent canine image.")
     async def post_fat_husky(self, interaction: discord.Interaction) -> None:
-        """Sends an image or video of a large husky."""
-        url = husky_bank.body
+        """Sends an image of a large husky."""
         embed = discord.Embed(color=discord.Color.red())
         embed.set_author(name="D--> A corpulent canine.", icon_url=husky_bank.icon)
-
-        # embed.set_image only renders still / GIF images; for video
-        # files we put the URL in message content so Discord's auto-embed
-        # renders an inline video player below the embed.
-        if url.lower().endswith((".mp4", ".webm", ".mov")):
-            await interaction.response.send_message(content=url, embed=embed)
-        else:
-            embed.set_image(url=url)
-            await interaction.response.send_message(embed=embed)
+        embed.set_image(url=husky_bank.body)
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.guild_only
     @app_commands.command(name="ping", description="Ping the bot.")

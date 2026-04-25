@@ -70,11 +70,11 @@ huskies = {
         'https://cdn.discordapp.com/attachments/663453347763716110/841760984724537414/Husko.png',
         'https://cdn.discordapp.com/attachments/663453347763716110/842369221669421106/Ballonsky.png',
         'https://cdn.discordapp.com/attachments/663453347763716110/842369264341876776/twosky.png',
-        'https://i.imgur.com/lbI4i9E.mp4',  # huskycake
-        'https://i.imgur.com/H5SJCop.mp4',  # huskysquish
-        'https://i.imgur.com/zIw8VPs.mp4',  # huskyballoon
-        'https://i.imgur.com/KM3RueF.mp4',  # huskyboom
-        'https://i.imgur.com/utvkvpo.mp4',  # huskychoco
-        'https://i.imgur.com/GxoNMXC.mp4',  # huskycrumble
+        'https://i.imgur.com/fLd0qr2.gif',  # huskycake
+        'https://i.imgur.com/3nqGdKh.gif',  # huskysquish
+        'https://i.imgur.com/ezFHl9P.gif',  # huskyballoon
+        'https://i.imgur.com/Yp9asFs.gif',  # huskyboom
+        'https://i.imgur.com/3PFYSmU.gif',  # huskychoco
+        'https://i.imgur.com/rWzwOrT.gif',  # huskycrumble
         ),
     }
