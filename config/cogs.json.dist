@@ -39,6 +39,10 @@
     "misc": {
         "latex_channel_ids": [1, 2, 3] // latex can only be used in these channels
     },
+    "announcement_bridge": { // mirrors Follow-feature cross-posts hub -> target
+        "source_channel_id": 0, // hub channel that receives Follow cross-posts
+        "target_channel_id": 0  // channel to re-emit into (e.g. modchat)
+    },
     "reddit_watcher": { // reposts high-scoring subreddit posts to a channel
         "subreddit": "homestuck",
         "channel_id": 0, // destination Discord channel id
