@@ -143,7 +143,14 @@ class BanManager(commands.Cog, name="ban_manager"):
         if modlog_channel_id:
             channel = self.bot.get_channel(modlog_channel_id)
             if channel:
-                await channel.send(embed=embed)
+                try:
+                    await channel.send(embed=embed)
+                except discord.HTTPException as exc:
+                    self.bot.log(
+                        f"BanManager: failed to send modlog embed: {exc}",
+                        name="ban_manager",
+                        level=logging.WARNING,
+                    )
 
     @tasks.loop(minutes=10)
     async def manage_mutelist(self) -> None:
@@ -312,20 +319,18 @@ class BanManager(commands.Cog, name="ban_manager"):
             )
             return
 
+        await self._ensure_ban_maps()
+
         if isinstance(interaction.channel, discord.Thread):
             parent = interaction.channel.parent
+            expected = self.thread_ban_map.get(parent.id) or self.channel_ban_map.get(parent.id)
         else:
             parent = interaction.channel
+            expected = self.channel_ban_map.get(parent.id)
 
-        # find which role we applied
-        channel_ban_role = next(
-            (
-                role
-                for role in member.roles
-                if parent.overwrites_for(role).pair()[1].send_messages
-            ),
-            None,
-        )
+        # Mirror the ban command: find the role the map says should have been applied,
+        # then confirm the member actually has it.
+        channel_ban_role = expected if (expected and expected in member.roles) else None
         if not channel_ban_role:
             await interaction.followup.send(
                 response_bank.channel_unban_role_error, ephemeral=True
