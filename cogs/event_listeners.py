@@ -52,6 +52,9 @@ class EventListeners(commands.Cog, name="events"):
         self.modlog_channel_id: int | None = self.bot.config["bot"].get(
             "modlog_channel_id"
         )
+        self.modchat_channel_id: int | None = self.bot.config["bot"].get(
+            "modchat_channel_id"
+        )
         # Tracks recent bans to avoid logging deleted messages (user_id -> timestamp)
         self._recent_bans: dict[int, float] = defaultdict(float)
 
@@ -160,6 +163,14 @@ class EventListeners(commands.Cog, name="events"):
         # indicate attachment in embed
         placeholder = f"{prefix.capitalize()} too long, see attached {filename}"
         return placeholder, file
+
+    def _is_modchat(self, channel) -> bool:
+        if not self.modchat_channel_id or channel is None:
+            return False
+        if getattr(channel, "id", None) == self.modchat_channel_id:
+            return True
+        parent_id = getattr(getattr(channel, "parent", None), "id", None)
+        return parent_id == self.modchat_channel_id
 
     async def _log_simple_event(
         self,
@@ -311,6 +322,8 @@ class EventListeners(commands.Cog, name="events"):
             return
         if not self.msglog_channel_id:
             return
+        if self._is_modchat(before.channel):
+            return
 
         ch = self.bot.get_channel(self.msglog_channel_id)
         if not isinstance(ch, discord.TextChannel):
@@ -356,6 +369,9 @@ class EventListeners(commands.Cog, name="events"):
             return
 
         if message.author.bot or not self.msglog_channel_id:
+            return
+
+        if self._is_modchat(message.channel):
             return
 
         ch = self.bot.get_channel(self.msglog_channel_id)
@@ -415,6 +431,9 @@ class EventListeners(commands.Cog, name="events"):
 
     @commands.Cog.listener()
     async def on_bulk_message_delete(self, messages: list[discord.Message]):
+        if messages and self._is_modchat(messages[0].channel):
+            return
+
         channel_mention = (
             messages[0].channel.mention if messages else "⚠️ unknown channel"
         )
