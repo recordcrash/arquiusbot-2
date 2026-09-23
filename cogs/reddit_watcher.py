@@ -19,12 +19,13 @@ SEEN_TTL_DAYS = 14
 # Refresh the OAuth token this many seconds before its stated expiry.
 TOKEN_REFRESH_MARGIN_SECONDS = 60
 # Host substrings that identify a URL as pointing to Reddit-owned media /
-# pages. Used to skip the description's external-link field for URLs
-# that are already represented by the title link, embed image, or
-# auto-embedded video.
+# pages. Used to skip the external-link line for URLs that are already
+# represented by the title link or the gallery.
 REDDIT_HOST_SUBSTRINGS = ("reddit.com", "redd.it")
+# Discord's limit on items in one media gallery.
+MAX_GALLERY_ITEMS = 10
 
-# Embed-bar colour per link-flair CSS class, derived from r/homestuck's
+# Card accent colour per link-flair CSS class, derived from r/homestuck's
 # subreddit CSS. For flairs whose background is light grey, we use the text
 # colour instead (more distinctive). 0x000000 is treated as "no colour" by
 # Discord, so pure-black flairs use 0x010101 as a workaround.
@@ -289,11 +290,9 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
             if post.get("over_18"):
                 continue
 
-            content, embeds = self._build_message(post)
             try:
                 await channel.send(
-                    content=content,
-                    embeds=embeds,
+                    view=self._build_view(post),
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
             except discord.HTTPException as exc:
@@ -315,167 +314,128 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
         db.prune_reddit_posts(SEEN_TTL_DAYS)
 
     @staticmethod
-    def _gallery_image_urls(post: dict[str, Any]) -> list[str]:
-        """Returns full-size image URLs for a Reddit gallery post, in order.
-
-        Non-gallery posts return an empty list.
-        """
+    def _gallery_images(post: dict[str, Any]) -> list[tuple[str, str | None]]:
+        """(full-size URL, caption) for each image of a gallery post, in
+        order. Non-gallery posts return an empty list."""
         if not post.get("is_gallery"):
             return []
-        items = post.get("gallery_data", {}).get("items") or []
+        items = (post.get("gallery_data") or {}).get("items") or []
         metadata = post.get("media_metadata") or {}
-        urls: list[str] = []
+        images: list[tuple[str, str | None]] = []
         for item in items:
-            mid = item.get("media_id")
-            if not mid:
-                continue
-            meta = metadata.get(mid) or {}
+            meta = metadata.get(item.get("media_id")) or {}
             if meta.get("status") != "valid":
                 continue
             source = meta.get("s") or {}
             raw = source.get("u") or source.get("gif") or source.get("mp4")
             if raw:
-                urls.append(html.unescape(raw))
-        return urls
+                images.append((html.unescape(raw), item.get("caption") or None))
+        return images
 
     @staticmethod
     def _single_preview_image(post: dict[str, Any]) -> str | None:
-        """Returns a preview image URL for non-gallery posts, or None."""
+        """The post's image, or for anything else (videos and links included)
+        Reddit's preview thumbnail; None if there is neither."""
         if post.get("post_hint") == "image":
             return post.get("url_overridden_by_dest") or post.get("url")
-        previews = post.get("preview", {}).get("images") or []
+        previews = (post.get("preview") or {}).get("images") or []
         if not previews:
             return None
-        src = previews[0].get("source", {}).get("url")
+        src = (previews[0].get("source") or {}).get("url")
         return html.unescape(src) if src else None
 
     @staticmethod
-    def _video_content_url(post: dict[str, Any]) -> str | None:
-        """Returns a URL suitable for message.content so Discord
-        auto-embeds a video player.
-
-        For Reddit-hosted videos (``post_hint == "hosted:video"``) we
-        return ``media.reddit_video.fallback_url`` — a direct MP4 URL.
-        Third-party video embeds (YouTube, Twitter, etc., which come
-        through as ``post_hint == "rich:video"``) get their
-        ``url_overridden_by_dest``; Discord auto-embeds those hosts
-        natively.
-        """
+    def _is_video(post: dict[str, Any]) -> bool:
         media = post.get("media") or {}
-        rv = media.get("reddit_video") or {}
-        fallback = rv.get("fallback_url")
-        if fallback:
-            return fallback
-        if post.get("post_hint") == "rich:video":
-            return post.get("url_overridden_by_dest") or post.get("url")
-        return None
+        return bool(post.get("is_video") or media.get("reddit_video")
+                    or post.get("post_hint") in ("hosted:video", "rich:video"))
 
-    def _build_message(
-        self, post: dict[str, Any]
-    ) -> tuple[str | None, list[discord.Embed]]:
-        """Builds the message-content and embed(s) for a post.
-
-        Returns ``(content, embeds)``. ``content`` is non-None for video
-        posts: we put the direct video URL in message content so
-        Discord's own auto-embed renders an inline video player (custom
-        embeds can't play video). Galleries return up to 4 embeds
-        sharing the permalink URL so Discord stacks them into one card.
+    def _build_view(self, post: dict[str, Any]) -> discord.ui.LayoutView:
         """
-        gallery_urls = self._gallery_image_urls(post)
-        video_url = None if gallery_urls else self._video_content_url(post)
-        # Only use a single preview image if we're not showing gallery
-        # images or auto-embedding a video (otherwise we'd get a
-        # pointless duplicate / black thumbnail).
-        single = (
-            self._single_preview_image(post)
-            if not (gallery_urls or video_url)
-            else None
+        The post as one Components V2 card: a container in the flair's
+        colour holding the text and, below it, a gallery of the post's
+        images (up to Discord's 10). Videos show their thumbnail only and
+        are marked as such; clicking through to Reddit plays them. Discord
+        can't play Reddit's split audio/video streams inline anyway.
+        """
+        images = self._gallery_images(post)
+        if not images:
+            single = self._single_preview_image(post)
+            images = [(single, None)] if single else []
+        shown = images[:MAX_GALLERY_ITEMS]
+
+        container = discord.ui.Container(
+            accent_colour=discord.Colour(self._colour(post)))
+        text = self._build_text(
+            post,
+            displayed_url=shown[0][0] if shown else None,
+            more_images=len(images) - len(shown),
         )
+        container.add_item(discord.ui.TextDisplay(text))
+        if shown:
+            gallery = discord.ui.MediaGallery()
+            for url, caption in shown:
+                gallery.add_item(media=url, description=caption[:1024] if caption else None)
+            container.add_item(gallery)
 
-        # URL to suppress from the description's external-link line —
-        # it's already being rendered as the embed image or as an
-        # auto-embedded video.
-        suppress_url: str | None = (
-            gallery_urls[0] if gallery_urls else (video_url or single)
-        )
+        view = discord.ui.LayoutView(timeout=None)
+        view.add_item(container)
+        return view
 
-        main = self._build_main_embed(post, suppress_description_url=suppress_url)
+    @staticmethod
+    def _colour(post: dict[str, Any]) -> int:
+        flair_class = (post.get("link_flair_css_class") or "").strip().lower()
+        return FLAIR_COLOURS.get(flair_class, DEFAULT_EMBED_COLOUR)
 
-        if gallery_urls:
-            main.set_image(url=gallery_urls[0])
-            extras: list[discord.Embed] = []
-            # Discord stacks same-URL embeds — cap at 4 images per card.
-            for extra_url in gallery_urls[1:4]:
-                extra = discord.Embed(url=main.url)
-                extra.set_image(url=extra_url)
-                extras.append(extra)
-            return None, [main, *extras]
-
-        if single:
-            main.set_image(url=single)
-
-        # For video posts, don't set an embed image — Discord's
-        # auto-embed from the URL in content will show the player.
-        return video_url, [main]
-
-    def _build_main_embed(
+    def _build_text(
         self,
         post: dict[str, Any],
         *,
-        suppress_description_url: str | None = None,
-    ) -> discord.Embed:
-        title = (post.get("title") or "(untitled)")[:256]
+        displayed_url: str | None = None,
+        more_images: int = 0,
+    ) -> str:
+        title = escape_link_text(post.get("title") or "(untitled)")[:300]
         permalink = REDDIT_PUBLIC_BASE + (post.get("permalink") or "")
         external = post.get("url_overridden_by_dest") or post.get("url") or permalink
-        author = post.get("author") or "[deleted]"
+        author = discord.utils.escape_markdown(post.get("author") or "[deleted]")
         score = post.get("score", 0)
         comments = post.get("num_comments", 0)
         flair_text = (post.get("link_flair_text") or "").strip()
-        flair_class = (post.get("link_flair_css_class") or "").strip().lower()
         subreddit = post.get("subreddit") or self.subreddit
         selftext = post.get("selftext") or ""
 
-        colour_value = FLAIR_COLOURS.get(flair_class, DEFAULT_EMBED_COLOUR)
-        embed = discord.Embed(
-            title=title,
-            url=permalink,
-            colour=discord.Colour(colour_value),
-        )
-        embed.set_author(name=f"u/{author} in r/{subreddit}")
-
-        # Compact stats line as the description's first paragraph. Putting
-        # score / comments here instead of using embed.add_field keeps the
-        # image directly under the description (Discord's fixed embed layout
-        # forces fields above the image).
         stats_bits: list[str] = []
         if flair_text:
-            stats_bits.append(f"**[{flair_text}]**")
+            stats_bits.append(f"**[{discord.utils.escape_markdown(flair_text)}]**")
         stats_bits.append(f"**{score}** points")
         stats_bits.append(f"**{comments}** comments")
-        desc_parts: list[str] = [" · ".join(stats_bits)]
+        if self._is_video(post):
+            stats_bits.append("▶ video")
+        if more_images > 0:
+            stats_bits.append(f"+{more_images} more images")
 
-        # Show external links inline in the description. Skip:
+        parts: list[str] = [
+            f"-# u/{author} in r/{subreddit}\n### [{title}]({permalink})",
+            " · ".join(stats_bits),
+        ]
+
+        # Show external links. Skip:
         #  - self-posts (external is the permalink itself);
         #  - any Reddit-owned URL (reddit.com gallery page, v.redd.it
         #    video, i.redd.it image, etc.) — already represented by the
-        #    title link, embed image, or auto-embedded video;
-        #  - the exact URL the caller says it's already rendering.
+        #    title link or the gallery;
+        #  - the exact URL already being shown as the first image.
         is_reddit_owned = any(h in external for h in REDDIT_HOST_SUBSTRINGS)
-        if (
-            external != permalink
-            and not is_reddit_owned
-            and external != suppress_description_url
-        ):
-            desc_parts.append(f"[{external[:60]}]({external})")
+        if external != permalink and not is_reddit_owned and external != displayed_url:
+            parts.append(f"[{escape_link_text(external[:60])}]({external})")
 
         if selftext:
-            desc_parts.append(
-                selftext[:900] + ("\u2026" if len(selftext) > 900 else "")
-            )
+            parts.append(selftext[:900] + ("\u2026" if len(selftext) > 900 else ""))
 
-        embed.description = "\n\n".join(desc_parts)
-        return embed
+        return "\n\n".join(parts)
 
 
-async def setup(bot: DiscordBot) -> None:
-    await bot.add_cog(RedditWatcher(bot))
+def escape_link_text(text: str) -> str:
+    """Markdown-safe text for inside [...]: brackets would end the link early."""
+    text = discord.utils.escape_markdown(text)
+    return text.replace("[", "\\[").replace("]", "\\]")

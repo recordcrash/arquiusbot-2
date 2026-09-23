@@ -387,16 +387,27 @@ class EventListeners(commands.Cog, name="events"):
 
         now = datetime.now(timezone.utc)
 
+        # A forwarded message has no content or attachments of its own: they
+        # live in its snapshot. Without this, forwarding something and then
+        # deleting it would leave no trace in the log.
+        snapshot = message.message_snapshots[0] if message.message_snapshots else None
+        content = message.content or (snapshot.content if snapshot else "")
+        attachments = [*message.attachments, *(snapshot.attachments if snapshot else [])]
+        forwarded = ""
+        if snapshot is not None:
+            origin = message.reference.jump_url if message.reference else None
+            forwarded = f" • Forwarded from [this message]({origin})" if origin else " • Forwarded"
+
         # 1) Log text content deletion, if any
-        if message.content:
+        if content:
             embed = discord.Embed(
-                title="Message Deleted",
+                title="Forwarded Message Deleted" if snapshot else "Message Deleted",
                 color=discord.Color.red(),
                 timestamp=now,
             )
-            embed.description = f"Message sent by {message.author.mention} • Deleted in {message.channel.mention}"
+            embed.description = f"Message sent by {message.author.mention} • Deleted in {message.channel.mention}{forwarded}"
             content_val, content_file = self._maybe_attach_content(
-                message.content, prefix="content"
+                content, prefix="content"
             )
             embed.add_field(name="Content", value=content_val, inline=False)
             embed.set_footer(
@@ -408,7 +419,7 @@ class EventListeners(commands.Cog, name="events"):
             await ch.send(embed=embed, files=[content_file] if content_file else None)
 
         # 2) Log each attachment separately
-        for att in message.attachments:
+        for att in attachments:
             # Decide title based on whether it's an image or other file
             title = "Image" if att.filename.lower().endswith(IMAGE_EXTS) else "File"
             att_embed = discord.Embed(
@@ -416,7 +427,7 @@ class EventListeners(commands.Cog, name="events"):
                 color=discord.Color.orange(),
                 timestamp=now,
             )
-            att_embed.description = f"{title} sent by {message.author.mention} • Deleted in {message.channel.mention}"
+            att_embed.description = f"{title} sent by {message.author.mention} • Deleted in {message.channel.mention}{forwarded}"
             # If it's an image, show it; otherwise just link the file
             if any(att.filename.lower().endswith(ext) for ext in IMAGE_EXTS):
                 att_embed.set_image(url=att.proxy_url)
