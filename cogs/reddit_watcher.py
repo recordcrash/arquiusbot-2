@@ -439,3 +439,7 @@ def escape_link_text(text: str) -> str:
     """Markdown-safe text for inside [...]: brackets would end the link early."""
     text = discord.utils.escape_markdown(text)
     return text.replace("[", "\\[").replace("]", "\\]")
+
+
+async def setup(bot: DiscordBot) -> None:
+    await bot.add_cog(RedditWatcher(bot))
