@@ -109,8 +109,17 @@ async def test_a_self_post_is_text_only(cog):
 async def test_the_card_carries_the_flair_colour_and_the_header(cog):
     container, text, _, _ = parts(cog._build_view(post()))
     assert container.accent_colour == discord.Colour(R.FLAIR_COLOURS["fanwork"])
-    assert text.startswith("-# u/some\\_user in r/homestuck\n### [A post](https://www.reddit.com/r/homestuck/comments/abc/a_post/)")
-    assert "**[Fanwork]** · **42** points · **7** comments" in text
+    assert text.startswith("-# u/some\\_user in r/homestuck\n### A post")
+    assert ("**[Fanwork]** · **42** points · "
+            "[**7** comments](https://www.reddit.com/r/homestuck/comments/abc/a_post/)") in text
+
+
+async def test_the_title_is_a_plain_heading_so_discord_cannot_leak_markdown(cog):
+    """Discord fails to parse a masked link whose text contains an emoji
+    anywhere, so no link may carry a post title as its text."""
+    _, text, _, _ = parts(cog._build_view(post()))
+    heading = next(line for line in text.splitlines() if line.startswith("### "))
+    assert "](" not in heading
 
 
 async def test_unknown_flair_gets_reddit_orange(cog):
@@ -118,9 +127,9 @@ async def test_unknown_flair_gets_reddit_orange(cog):
     assert container.accent_colour == discord.Colour(R.DEFAULT_EMBED_COLOUR)
 
 
-async def test_brackets_in_a_title_cannot_break_the_link(cog):
+async def test_brackets_in_a_title_cannot_form_a_link(cog):
     container, text, _, _ = parts(cog._build_view(post(title="[OC] Karkat [Art]")))
-    assert "### [\\[OC\\] Karkat \\[Art\\]](https://" in text
+    assert "### \\[OC\\] Karkat \\[Art\\]" in text
 
 
 async def test_posts_are_sent_as_a_layout_with_no_content_or_embeds(cog):
@@ -142,3 +151,29 @@ async def test_posts_are_sent_as_a_layout_with_no_content_or_embeds(cog):
     assert isinstance(kwargs["view"], discord.ui.LayoutView)
     assert "content" not in kwargs and "embeds" not in kwargs and "embed" not in kwargs
     cog.bot.db.mark_reddit_post_posted.assert_called_once_with("abc", 42)
+
+
+async def test_a_post_older_than_the_cutoff_is_never_posted(cog):
+    """A cold start must not flood the channel with the whole listing window."""
+    import time as _t
+    month_old = post(created_utc=_t.time() - 30 * 86400, score=9999)
+    fresh = post(created_utc=_t.time() - 3600, score=9999)
+    assert cog._is_too_old(month_old)
+    assert not cog._is_too_old(fresh)
+
+
+async def test_the_age_cutoff_can_be_disabled(cog):
+    import time as _t
+    cog.max_post_age_days = 0
+    assert not cog._is_too_old(post(created_utc=_t.time() - 365 * 86400))
+
+
+async def test_a_post_with_no_timestamp_is_not_treated_as_old(cog):
+    assert not cog._is_too_old(post())
+
+
+async def test_an_emoji_title_keeps_its_emoji_out_of_any_link(cog):
+    """Emoji anywhere in a link's text breaks it; outside the link it is fine."""
+    _, text, _, _ = parts(cog._build_view(post(title="megidos 😛")))
+    assert "### megidos 😛" in text
+    assert "😛]" not in text

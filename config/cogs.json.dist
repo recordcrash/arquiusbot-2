@@ -50,6 +50,7 @@
         "subreddit": "homestuck",
         "channel_id": 0, // destination Discord channel id
         "min_score": 50, // only repost once the post crosses this score
+        "max_post_age_days": 7, // never repost submissions older than this (0 = no limit)
         "interval_minutes": 10, // poll cadence (stay well under 10 req/min)
         "fetch_limit": 25, // capped at 100 by Reddit
         "user_agent": "arquiusbot/1.0 reddit-watcher",

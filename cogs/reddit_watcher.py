@@ -15,7 +15,10 @@ REDDIT_PUBLIC_BASE = "https://www.reddit.com"
 REDDIT_OAUTH_BASE = "https://oauth.reddit.com"
 REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token"
 DEFAULT_USER_AGENT = "arquiusbot/1.0 reddit-watcher"
-SEEN_TTL_DAYS = 14
+# Dedup rows are pruned after this long. It must stay comfortably longer
+# than the span of posts a /new?limit=N listing covers, or a post can be
+# pruned while still in the listing and get posted a second time.
+SEEN_TTL_DAYS = 180
 # Refresh the OAuth token this many seconds before its stated expiry.
 TOKEN_REFRESH_MARGIN_SECONDS = 60
 # Host substrings that identify a URL as pointing to Reddit-owned media /
@@ -85,6 +88,9 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
         self.subreddit: str = self.subconfig_data.get("subreddit", "homestuck")
         self.channel_id: int = int(self.subconfig_data.get("channel_id", 0))
         self.min_score: int = int(self.subconfig_data.get("min_score", 30))
+        self.max_post_age_days: int = int(
+            self.subconfig_data.get("max_post_age_days", 7)
+        )
         self.interval_minutes: int = int(
             self.subconfig_data.get("interval_minutes", 10)
         )
@@ -277,6 +283,9 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
                 continue
             score = int(post.get("score") or 0)
 
+            if self._is_too_old(post):
+                continue
+
             # Record first-seen so old entries can be pruned eventually.
             db.record_reddit_post_seen(pid)
 
@@ -344,6 +353,15 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
         src = (previews[0].get("source") or {}).get("url")
         return html.unescape(src) if src else None
 
+    def _is_too_old(self, post: dict[str, Any]) -> bool:
+        """True if the submission predates the age cutoff."""
+        if not self.max_post_age_days:
+            return False
+        created = float(post.get("created_utc") or 0)
+        if not created:
+            return False
+        return (time.time() - created) > self.max_post_age_days * 86400
+
     @staticmethod
     def _is_video(post: dict[str, Any]) -> bool:
         media = post.get("media") or {}
@@ -408,14 +426,14 @@ class RedditWatcher(commands.Cog, name="reddit_watcher"):
         if flair_text:
             stats_bits.append(f"**[{discord.utils.escape_markdown(flair_text)}]**")
         stats_bits.append(f"**{score}** points")
-        stats_bits.append(f"**{comments}** comments")
+        stats_bits.append(f"[**{comments}** comments]({permalink})")
         if self._is_video(post):
             stats_bits.append("▶ video")
         if more_images > 0:
             stats_bits.append(f"+{more_images} more images")
 
         parts: list[str] = [
-            f"-# u/{author} in r/{subreddit}\n### [{title}]({permalink})",
+            f"-# u/{author} in r/{subreddit}\n### {title}",
             " · ".join(stats_bits),
         ]
 
